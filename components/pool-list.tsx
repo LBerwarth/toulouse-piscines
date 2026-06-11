@@ -1,0 +1,246 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import type { PoolStatus } from "@/lib/status";
+
+type LiveState =
+  | { kind: "open"; until: string }
+  | { kind: "later"; at: string }
+  | { kind: "done" }
+  | { kind: "closed"; reason: string | null }
+  | { kind: "unknown" };
+
+function nowInToulouse(): string {
+  return new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date());
+}
+
+function liveState(pool: PoolStatus, now: string | null): LiveState {
+  const day = pool.day;
+  if (!day) return { kind: "unknown" };
+  if (!day.openToday || day.slotsToday.length === 0) {
+    return { kind: "closed", reason: day.closureReason };
+  }
+  if (now === null) return { kind: "unknown" };
+  for (const slot of day.slotsToday) {
+    if (now >= slot.start && now < slot.end) return { kind: "open", until: slot.end };
+  }
+  const next = day.slotsToday.find((s) => now < s.start);
+  if (next) return { kind: "later", at: next.start };
+  return { kind: "done" };
+}
+
+const ORDER: Record<LiveState["kind"], number> = {
+  open: 0,
+  later: 1,
+  done: 2,
+  closed: 3,
+  unknown: 4,
+};
+
+function Pill({
+  bg,
+  text,
+  dot,
+  children,
+}: {
+  bg: string;
+  text: string;
+  dot: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full ${bg} px-2.5 py-1 text-xs font-semibold ${text}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+      {children}
+    </span>
+  );
+}
+
+function Badge({ state }: { state: LiveState }) {
+  switch (state.kind) {
+    case "open":
+      return (
+        <Pill bg="bg-violet-100" text="text-violet-700" dot="bg-violet-600">
+          Ouverte · jusqu&apos;à {state.until}
+        </Pill>
+      );
+    case "later":
+      return (
+        <Pill bg="bg-amber-100" text="text-amber-700" dot="bg-amber-500">
+          Ouvre à {state.at}
+        </Pill>
+      );
+    case "done":
+      return (
+        <Pill bg="bg-slate-100" text="text-slate-500" dot="bg-slate-400">
+          Terminé pour aujourd&apos;hui
+        </Pill>
+      );
+    case "closed":
+      return (
+        <Pill bg="bg-red-100" text="text-red-700" dot="bg-red-500">
+          Fermée aujourd&apos;hui
+        </Pill>
+      );
+    default:
+      return (
+        <Pill bg="bg-slate-100" text="text-slate-400" dot="bg-slate-300">
+          Indisponible
+        </Pill>
+      );
+  }
+}
+
+function PoolCard({ pool, now }: { pool: PoolStatus; now: string | null }) {
+  const state = liveState(pool, now);
+  const day = pool.day;
+
+  return (
+    <li className="rounded-2xl bg-white p-4 shadow-md shadow-pink-100/50">
+      <div className="flex items-start justify-between gap-3">
+        <a
+          href={pool.url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-base font-semibold text-slate-900 hover:text-fuchsia-700"
+        >
+          {pool.name}
+        </a>
+        <Badge state={state} />
+      </div>
+
+      {!pool.ok && (
+        <p className="mt-2 text-sm text-rose-700">
+          Impossible de récupérer la page officielle ({pool.error}).
+        </p>
+      )}
+
+      {day && day.basins.length > 1 ? (
+        <div className="mt-2 space-y-1">
+          {day.basins.map((basin) => (
+            <div
+              key={basin.label ?? "bassin"}
+              className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1"
+            >
+              {basin.label && <span className="text-xs text-slate-500">{basin.label} :</span>}
+              {basin.slots.length > 0 ? (
+                basin.slots.map((slot) => (
+                  <span
+                    key={`${slot.start}-${slot.end}`}
+                    className="rounded-full bg-fuchsia-50 px-2.5 py-0.5 text-xs font-medium tabular-nums text-fuchsia-900"
+                  >
+                    {slot.start}–{slot.end}
+                  </span>
+                ))
+              ) : (
+                <span className="text-xs italic text-slate-400" title={basin.note ?? undefined}>
+                  fermé
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        day &&
+        day.slotsToday.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {day.slotsToday.map((slot) => (
+              <span
+                key={`${slot.start}-${slot.end}`}
+                className="rounded-full bg-fuchsia-50 px-2.5 py-0.5 text-xs font-medium tabular-nums text-fuchsia-900"
+              >
+                {slot.start}–{slot.end}
+              </span>
+            ))}
+          </div>
+        )
+      )}
+
+      {state.kind === "closed" && state.reason && (
+        <p className="mt-2 text-sm text-slate-600">{state.reason}</p>
+      )}
+
+      {day && day.alerts.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {day.alerts.map((alert) => (
+            <li key={alert} className="text-xs text-amber-800">
+              ⚠️ {alert}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {day && day.confidence === "low" && (
+        <p className="mt-2 text-xs italic text-slate-400">
+          Information incertaine — vérifiez la page officielle.
+        </p>
+      )}
+
+      {pool.raw && (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-xs text-slate-500">
+            Voir les infos publiées
+          </summary>
+          <div className="mt-2 space-y-2 text-xs text-slate-600">
+            {pool.raw.intro && <p>{pool.raw.intro}</p>}
+            {pool.raw.notices.map((n) => (
+              <p key={n} className="text-amber-800">
+                {n}
+              </p>
+            ))}
+            {pool.raw.sections.map((s) => (
+              <details
+                key={s.title}
+                className="rounded-xl border border-fuchsia-100/60 bg-fuchsia-50/40 px-2.5 py-1.5"
+              >
+                <summary className="cursor-pointer font-medium text-slate-700">{s.title}</summary>
+                <div className="mt-1.5 space-y-1.5">
+                  {s.lines.map((line, i) =>
+                    line.kind === "heading" ? (
+                      <p key={i} className="pt-1 font-semibold text-slate-700">
+                        {line.text}
+                      </p>
+                    ) : (
+                      <p key={i}>{line.text}</p>
+                    )
+                  )}
+                </div>
+              </details>
+            ))}
+          </div>
+        </details>
+      )}
+    </li>
+  );
+}
+
+export function PoolList({ pools }: { pools: PoolStatus[] }) {
+  // L'heure courante n'est calculée qu'après montage pour éviter un décalage
+  // entre le rendu serveur (mis en cache 30 min) et le navigateur.
+  const [now, setNow] = useState<string | null>(null);
+  useEffect(() => {
+    setNow(nowInToulouse());
+    const timer = setInterval(() => setNow(nowInToulouse()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const sorted = [...pools].sort((a, b) => {
+    const diff = ORDER[liveState(a, now).kind] - ORDER[liveState(b, now).kind];
+    return diff !== 0 ? diff : a.name.localeCompare(b.name, "fr");
+  });
+
+  return (
+    <ul className="space-y-3">
+      {sorted.map((pool) => (
+        <PoolCard key={pool.slug} pool={pool} now={now} />
+      ))}
+    </ul>
+  );
+}

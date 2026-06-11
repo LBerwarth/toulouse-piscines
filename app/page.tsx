@@ -1,65 +1,71 @@
-import Image from "next/image";
+import { getStatusReport } from "@/lib/status";
+import { PoolList } from "@/components/pool-list";
+import { DayTimeline } from "@/components/day-timeline";
 
-export default function Home() {
+// Régénéré au plus toutes les 30 minutes pour attraper les fermetures
+// publiées en cours de journée par la mairie.
+export const revalidate = 1800;
+
+export default async function Home() {
+  const report = await getStatusReport();
+
+  const updated = new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(report.updatedAt));
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
+    <main className="mx-auto w-full max-w-2xl px-4 py-5 sm:py-8">
+      <header className="relative mb-6 overflow-hidden rounded-3xl bg-gradient-to-br from-pink-500 via-fuchsia-600 to-violet-800 px-5 py-6 text-white shadow-lg shadow-pink-200/60 sm:px-7 sm:py-8">
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+          Piscines de Toulouse
+        </h1>
+        <p className="mt-1.5 text-sm font-light text-pink-50">
+          Quelles piscines municipales sont ouvertes aujourd&apos;hui ?
+        </p>
+        <p className="mt-3 text-xs text-pink-100/80">
+          Mis à jour {updated} · d&apos;après{" "}
           <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+            href="https://metropole.toulouse.fr/sortir/sport/les-piscines-toulousaines"
+            className="underline decoration-pink-200/60 underline-offset-2 hover:text-white"
             target="_blank"
-            rel="noopener noreferrer"
+            rel="noreferrer"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
+            metropole.toulouse.fr
           </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+        </p>
+        {/* Vagues décoratives */}
+        <svg
+          className="pointer-events-none absolute -bottom-1 left-0 w-full text-white/15"
+          viewBox="0 0 400 40"
+          fill="none"
+          aria-hidden="true"
+        >
+          <path
+            d="M0 25 Q 25 15 50 25 T 100 25 T 150 25 T 200 25 T 250 25 T 300 25 T 350 25 T 400 25 V 40 H 0 Z"
+            fill="currentColor"
+          />
+          <path
+            d="M0 32 Q 25 24 50 32 T 100 32 T 150 32 T 200 32 T 250 32 T 300 32 T 350 32 T 400 32 V 40 H 0 Z"
+            fill="currentColor"
+          />
+        </svg>
+      </header>
+
+      <DayTimeline pools={report.pools} />
+
+      <PoolList pools={report.pools} />
+
+      <footer className="mt-10 text-center text-xs text-slate-400">
+        <p>
+          Projet personnel, non affilié à la mairie de Toulouse. Vérifiez les
+          informations critiques sur la page officielle de chaque piscine.
+        </p>
+      </footer>
+    </main>
   );
 }
