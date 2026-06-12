@@ -5,7 +5,8 @@
       "namespace": "android_app",
       "package_name": "io.github.lberwarth.toulousepiscines",
       "sha256_cert_fingerprints": [
-        "REPLACE_WITH_SHA256_FROM_PLAY_CONSOLE_APP_SIGNING"
+        "96:D6:95:9C:64:87:66:02:73:F1:81:5E:3E:B0:55:2F:55:7B:0F:44:84:FC:1D:64:EF:7A:49:C1:42:FD:46:7C",
+        "DB:2E:80:59:C4:D8:85:3C:11:CB:74:13:FE:D6:FF:80:34:43:4A:AA:97:94:5A:0B:95:F9:22:5F:D6:09:38:0A"
       ]
     }
   }
