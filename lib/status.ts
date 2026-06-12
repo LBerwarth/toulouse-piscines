@@ -1,9 +1,10 @@
-import { POOLS, poolUrl, type Pool } from "./pools";
+import { POOLS, poolUrl, type Pool, type PoolEnv } from "./pools";
 import { fetchPoolPage, type SectionLine } from "./scrape";
 import { analyzeDay, type DayStatus } from "./parse-schedule";
 import { getWeekInfo, type TodayInfo } from "./today";
 
 export type { BasinSchedule, DayStatus, TimeSlot } from "./parse-schedule";
+export type { PoolEnv } from "./pools";
 
 /** Infos publiées, allégées pour le client (sans les corps de texte bruts) */
 export interface PoolInfo {
@@ -16,6 +17,8 @@ export interface PoolStatus {
   slug: string;
   name: string;
   url: string;
+  /** Type de bassins : intérieur, extérieur, ou mixte */
+  env: PoolEnv;
   /** false si la page n'a pas pu être récupérée */
   ok: boolean;
   error: string | null;
@@ -40,7 +43,7 @@ export interface StatusReport {
 }
 
 async function getPoolStatus(pool: Pool, week: TodayInfo[]): Promise<PoolStatus> {
-  const base = { slug: pool.slug, name: pool.name, url: poolUrl(pool) };
+  const base = { slug: pool.slug, name: pool.name, url: poolUrl(pool), env: pool.env };
   try {
     const page = await fetchPoolPage(base.url);
     const days = week.map((d) => analyzeDay(page, d));

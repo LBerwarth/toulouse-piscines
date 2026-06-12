@@ -1,6 +1,5 @@
 import { getStatusReport } from "@/lib/status";
-import { PoolList } from "@/components/pool-list";
-import { WeekTimeline } from "@/components/week-timeline";
+import { PoolsView } from "@/components/pools-view";
 
 // Régénéré au plus toutes les 30 minutes pour attraper les fermetures
 // publiées en cours de journée par la mairie.
@@ -56,9 +55,7 @@ export default async function Home() {
         </svg>
       </header>
 
-      <WeekTimeline pools={report.pools} days={report.days} />
-
-      <PoolList pools={report.pools} />
+      <PoolsView pools={report.pools} days={report.days} />
 
       <footer className="mt-10 text-center text-xs text-slate-400">
         <p>
