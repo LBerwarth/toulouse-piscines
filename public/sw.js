@@ -25,3 +25,37 @@ self.addEventListener("fetch", (event) => {
     )
   );
 });
+
+// --- Notifications push (fermetures exceptionnelles) ---
+
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = {};
+  }
+  const title = data.title || "Piscines de Toulouse";
+  const options = {
+    body: data.body || "Fermeture exceptionnelle signalée.",
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    lang: "fr",
+    tag: data.slug || "piscine",
+    data: { url: data.url || "/" },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/";
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+      for (const w of wins) {
+        if (w.url.startsWith(self.location.origin) && "focus" in w) return w.focus();
+      }
+      return clients.openWindow(url);
+    })
+  );
+});

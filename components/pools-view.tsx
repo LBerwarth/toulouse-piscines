@@ -5,6 +5,7 @@ import type { DayStatus, PoolStatus, TimeSlot, WeekDayRef } from "@/lib/status";
 import { classifyBasinEnv, type Environment } from "@/lib/environment";
 import { WeekTimeline } from "./week-timeline";
 import { PoolList } from "./pool-list";
+import { usePoolNotifications } from "./use-pool-notifications";
 
 type Filter = "all" | Environment;
 
@@ -67,34 +68,65 @@ function filterPools(pools: PoolStatus[], filter: Filter): PoolStatus[] {
 export function PoolsView({ pools, days }: { pools: PoolStatus[]; days: WeekDayRef[] }) {
   const [filter, setFilter] = useState<Filter>("all");
   const filtered = filterPools(pools, filter);
+  const notif = usePoolNotifications();
 
   return (
     <>
-      <div className="mb-4 flex items-center gap-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-violet-800/70">
-          Bassins
-        </span>
-        <div className="flex gap-1.5">
-          {OPTIONS.map((opt) => {
-            const isSel = filter === opt.value;
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setFilter(opt.value)}
-                aria-pressed={isSel}
-                className={`rounded-full px-3 py-1 text-xs transition-colors ${
-                  isSel
-                    ? "bg-gradient-to-r from-pink-500 to-fuchsia-600 font-semibold text-white shadow-sm"
-                    : "bg-white/70 font-medium text-fuchsia-900 hover:bg-fuchsia-100"
-                }`}
-              >
-                {opt.label}
-              </button>
-            );
-          })}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-violet-800/70">
+            Bassins
+          </span>
+          <div className="flex gap-1.5">
+            {OPTIONS.map((opt) => {
+              const isSel = filter === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setFilter(opt.value)}
+                  aria-pressed={isSel}
+                  className={`rounded-full px-3 py-1 text-xs transition-colors ${
+                    isSel
+                      ? "bg-gradient-to-r from-pink-500 to-fuchsia-600 font-semibold text-white shadow-sm"
+                      : "bg-white/70 font-medium text-fuchsia-900 hover:bg-fuchsia-100"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
+
+        {notif.supported && (
+          <button
+            type="button"
+            onClick={notif.toggleNotifications}
+            disabled={notif.busy}
+            aria-pressed={notif.subscribed}
+            className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors disabled:opacity-60 ${
+              notif.subscribed
+                ? "bg-violet-600 text-white shadow-sm"
+                : "bg-white/70 text-violet-800 hover:bg-fuchsia-100"
+            }`}
+            title="Recevoir une notification en cas de fermeture exceptionnelle"
+          >
+            <span aria-hidden>{notif.subscribed ? "🔔" : "🔕"}</span>
+            {notif.subscribed ? "Alertes activées" : "M'alerter des fermetures"}
+          </button>
+        )}
       </div>
+
+      {notif.supported && (notif.subscribed || notif.denied) && (
+        <p className="-mt-2 mb-4 text-xs text-slate-500">
+          {notif.denied
+            ? "Notifications bloquées par le navigateur — autorisez-les dans les réglages pour être alerté·e."
+            : notif.favorites.length > 0
+              ? "Vous serez alerté·e des fermetures exceptionnelles de vos piscines ★."
+              : "Vous serez alerté·e des fermetures exceptionnelles de toutes les piscines (ajoutez des ★ pour filtrer)."}
+        </p>
+      )}
 
       {filtered.length === 0 ? (
         <p className="mb-6 rounded-3xl bg-white p-6 text-center text-sm text-slate-500 shadow-lg shadow-pink-100/60">
@@ -103,7 +135,11 @@ export function PoolsView({ pools, days }: { pools: PoolStatus[]; days: WeekDayR
       ) : (
         <>
           <WeekTimeline pools={filtered} days={days} />
-          <PoolList pools={filtered} />
+          <PoolList
+            pools={filtered}
+            isFavorite={notif.isFavorite}
+            onToggleFavorite={notif.toggleFavorite}
+          />
         </>
       )}
     </>

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { analyzeDay, parseDateRange, parseDays, parseTimeRanges } from "./parse-schedule";
+import {
+  analyzeDay,
+  exceptionalSignature,
+  parseDateRange,
+  parseDays,
+  parseTimeRanges,
+  type DayStatus,
+} from "./parse-schedule";
 import type { PageSections, SectionLine } from "./scrape";
 import type { TodayInfo } from "./today";
 
@@ -552,5 +559,50 @@ describe("analyzeDay — cas réels", () => {
     expect(analyzeDay(p, today(20260620, 5)).openToday).toBe(false);
     expect(analyzeDay(p, today(20260619, 4)).openToday).toBe(true);
     expect(analyzeDay(p, today(20260621, 6)).openToday).toBe(true);
+  });
+});
+
+describe("exceptionalSignature — déclencheur des notifications", () => {
+  const dayStatus = (over: Partial<DayStatus>): DayStatus => ({
+    openToday: true,
+    slotsToday: [],
+    closureReason: null,
+    alerts: [],
+    confidence: "high",
+    basins: [],
+    ...over,
+  });
+
+  it("une fermeture NORMALE (jour de repos) ne déclenche rien", () => {
+    expect(exceptionalSignature(dayStatus({ openToday: false, closureReason: "Pas d'ouverture le lundi" }))).toBeNull();
+    expect(exceptionalSignature(dayStatus({}))).toBeNull();
+  });
+
+  it("une fermeture pour problème technique déclenche", () => {
+    const sig = exceptionalSignature(
+      dayStatus({ openToday: false, closureReason: "La piscine est fermée pour un problème technique." })
+    );
+    expect(sig).toMatch(/problème technique/i);
+  });
+
+  it("une grève déclenche", () => {
+    expect(exceptionalSignature(dayStatus({ alerts: ["Fermeture en raison d'une grève le 15 juin."] }))).toMatch(
+      /grève/i
+    );
+  });
+
+  it("une vidange annoncée déclenche", () => {
+    expect(exceptionalSignature(dayStatus({ alerts: ["La vidange annuelle aura lieu du 15 au 20 juin."] }))).toMatch(
+      /vidange/i
+    );
+  });
+
+  it("grève annoncée dans le chapeau → détectée de bout en bout", () => {
+    const p = page(
+      [{ title: "Horaires", lines: [text("Tous les jours de 10h à 20h")] }],
+      "La piscine sera fermée en raison d'une grève nationale."
+    );
+    const day = analyzeDay(p, today(20260611, 3));
+    expect(exceptionalSignature(day)).toMatch(/grève/i);
   });
 });

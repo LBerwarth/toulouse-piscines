@@ -58,6 +58,21 @@ export default function Confidentialite() {
           </p>
         </Section>
 
+        <Section title="Notifications (facultatif)">
+          <p>
+            Si — et seulement si — vous activez les alertes de fermeture, votre navigateur crée
+            un identifiant d&apos;abonnement push (une URL technique fournie par le service de
+            notification de votre navigateur, sans votre nom ni votre e-mail). Nous le
+            conservons, avec la liste des piscines que vous choisissez de suivre, à la seule fin
+            de vous envoyer ces notifications.
+          </p>
+          <p>
+            Vous pouvez tout désactiver à tout moment depuis le bouton « M&apos;alerter des
+            fermetures » ou les réglages de votre navigateur&nbsp;: l&apos;abonnement est alors
+            immédiatement supprimé. Ces données ne sont ni vendues ni partagées.
+          </p>
+        </Section>
+
         <Section title="Données techniques d'hébergement">
           <p>
             Le site est hébergé par Vercel. Comme tout serveur web, l&apos;infrastructure

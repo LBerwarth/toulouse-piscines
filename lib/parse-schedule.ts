@@ -278,6 +278,8 @@ const ALERT_KEYWORDS = [
   "incident",
   "panne",
   "vidange",
+  "greve",
+  "mouvement social",
 ];
 
 /** Phrases conditionnelles (« en cas de… », « lors des matchs… ») : info permanente, pas une alerte */
@@ -301,6 +303,25 @@ function extractAlerts(texts: string[]): string[] {
     }
   }
   return alerts.slice(0, 6);
+}
+
+// Évènements exceptionnels uniquement — jamais les fermetures « normales »
+// (jour de repos habituel). Couvre fermeture exceptionnelle, problème
+// technique, vidange, panne, incident, grève, maintenance.
+const EXCEPTIONAL_RE =
+  /(ferm\w*\s+exceptionnel|exceptionnellement|probl[èe]me technique|raison technique|incident|panne|vidange|gr[èe]ve|mouvement social|maintenance)/i;
+
+/**
+ * Signature de l'évènement exceptionnel du jour pour une piscine (ou null si
+ * aucun). Sert au cron de notifications pour ne pousser qu'au changement
+ * d'état — et jamais pour une fermeture « normale » (jour de repos habituel).
+ */
+export function exceptionalSignature(day: DayStatus): string | null {
+  const parts: string[] = [];
+  if (day.closureReason && EXCEPTIONAL_RE.test(day.closureReason)) parts.push(day.closureReason);
+  for (const alert of day.alerts) if (EXCEPTIONAL_RE.test(alert)) parts.push(alert);
+  if (parts.length === 0) return null;
+  return [...new Set(parts)].join(" | ").slice(0, 300);
 }
 
 function findStrongClosure(texts: string[], today: TodayInfo): string | null {

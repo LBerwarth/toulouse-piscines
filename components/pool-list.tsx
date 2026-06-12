@@ -132,21 +132,51 @@ function Badge({ state }: { state: LiveState }) {
   }
 }
 
-function PoolCard({ pool, now }: { pool: PoolStatus; now: string | null }) {
+function PoolCard({
+  pool,
+  now,
+  isFavorite,
+  onToggleFavorite,
+}: {
+  pool: PoolStatus;
+  now: string | null;
+  isFavorite?: boolean;
+  onToggleFavorite?: (slug: string) => void;
+}) {
   const state = liveState(pool, now);
   const day = pool.week?.[0];
 
   return (
     <li className="rounded-2xl bg-white p-4 shadow-md shadow-pink-100/50">
       <div className="flex items-start justify-between gap-3">
-        <a
-          href={pool.url}
-          target="_blank"
-          rel="noreferrer"
-          className="text-base font-semibold text-slate-900 hover:text-fuchsia-700"
-        >
-          {pool.name}
-        </a>
+        <div className="flex min-w-0 items-start gap-1.5">
+          {onToggleFavorite && (
+            <button
+              type="button"
+              onClick={() => onToggleFavorite(pool.slug)}
+              aria-pressed={isFavorite}
+              aria-label={isFavorite ? "Retirer des favoris" : "Suivre cette piscine"}
+              title={
+                isFavorite
+                  ? "Suivie — alertes de fermeture activées pour cette piscine"
+                  : "Suivre pour être alerté·e des fermetures"
+              }
+              className={`-ml-0.5 shrink-0 text-lg leading-none transition-colors ${
+                isFavorite ? "text-amber-400" : "text-slate-300 hover:text-amber-300"
+              }`}
+            >
+              {isFavorite ? "★" : "☆"}
+            </button>
+          )}
+          <a
+            href={pool.url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-base font-semibold text-slate-900 hover:text-fuchsia-700"
+          >
+            {pool.name}
+          </a>
+        </div>
         <Badge state={state} />
       </div>
 
@@ -255,7 +285,15 @@ function PoolCard({ pool, now }: { pool: PoolStatus; now: string | null }) {
   );
 }
 
-export function PoolList({ pools }: { pools: PoolStatus[] }) {
+export function PoolList({
+  pools,
+  isFavorite,
+  onToggleFavorite,
+}: {
+  pools: PoolStatus[];
+  isFavorite?: (slug: string) => boolean;
+  onToggleFavorite?: (slug: string) => void;
+}) {
   // L'heure courante n'est calculée qu'après montage pour éviter un décalage
   // entre le rendu serveur (mis en cache 30 min) et le navigateur.
   const [now, setNow] = useState<string | null>(null);
@@ -273,7 +311,13 @@ export function PoolList({ pools }: { pools: PoolStatus[] }) {
   return (
     <ul className="space-y-3">
       {sorted.map((pool) => (
-        <PoolCard key={pool.slug} pool={pool} now={now} />
+        <PoolCard
+          key={pool.slug}
+          pool={pool}
+          now={now}
+          isFavorite={onToggleFavorite ? isFavorite?.(pool.slug) : undefined}
+          onToggleFavorite={onToggleFavorite}
+        />
       ))}
     </ul>
   );

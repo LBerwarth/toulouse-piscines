@@ -1,0 +1,24 @@
+name: Vérifier les fermetures de piscines
+
+# Appelle l'endpoint qui scrute les pages de la mairie et envoie une
+# notification push quand une fermeture exceptionnelle apparaît.
+# (Cron externe via GitHub Actions : pas soumis aux limites de fréquence
+#  des cron Vercel du plan Hobby.)
+
+on:
+  schedule:
+    - cron: "7 * * * *" # toutes les heures, à HH:07
+  workflow_dispatch: {} # déclenchement manuel possible
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Appeler l'endpoint cron
+        run: |
+          code=$(curl -s -o /tmp/out.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            https://toulouse-piscines.vercel.app/api/cron/check-closures)
+          echo "HTTP $code"
+          cat /tmp/out.json
+          test "$code" = "200"
