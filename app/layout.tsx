@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Outfit } from "next/font/google";
 import "./globals.css";
+import { PwaRegister } from "@/components/pwa-register";
 
 const outfit = Outfit({
   variable: "--font-outfit",
@@ -40,6 +41,7 @@ export default function RootLayout({
           aria-hidden
           className="fixed inset-0 -z-10 bg-gradient-to-b from-white/80 via-[#fdf8fc]/88 to-[#fdf8fc]/96"
         />
+        <PwaRegister />
         {children}
       </body>
     </html>
