@@ -1,9 +1,16 @@
 import { POOLS, poolUrl, type Pool } from "./pools";
-import { fetchPoolPage, type PageSections } from "./scrape";
+import { fetchPoolPage, type SectionLine } from "./scrape";
 import { analyzeDay, type DayStatus } from "./parse-schedule";
-import { getTodayInfo, type TodayInfo } from "./today";
+import { getWeekInfo, type TodayInfo } from "./today";
 
 export type { BasinSchedule, DayStatus, TimeSlot } from "./parse-schedule";
+
+/** Infos publiées, allégées pour le client (sans les corps de texte bruts) */
+export interface PoolInfo {
+  intro: string;
+  notices: string[];
+  sections: { title: string; lines: SectionLine[] }[];
+}
 
 export interface PoolStatus {
   slug: string;
@@ -12,38 +19,56 @@ export interface PoolStatus {
   /** false si la page n'a pas pu être récupérée */
   ok: boolean;
   error: string | null;
-  /** null uniquement si la page n'a pas pu être récupérée */
-  day: DayStatus | null;
-  /** Sections brutes, pour vérification dans l'interface */
-  raw: PageSections | null;
+  /** Statut des 7 prochains jours, aligné sur StatusReport.days ([0] = aujourd'hui) ;
+   *  null uniquement si la page n'a pas pu être récupérée */
+  week: DayStatus[] | null;
+  /** Sections publiées, pour vérification dans l'interface */
+  raw: PoolInfo | null;
+}
+
+export interface WeekDayRef {
+  dateKey: number;
+  /** 0 = lundi … 6 = dimanche */
+  weekday: number;
 }
 
 export interface StatusReport {
   updatedAt: string;
+  /** Les 7 prochains jours ([0] = aujourd'hui), index communs à PoolStatus.week */
+  days: WeekDayRef[];
   pools: PoolStatus[];
 }
 
-async function getPoolStatus(pool: Pool, today: TodayInfo): Promise<PoolStatus> {
+async function getPoolStatus(pool: Pool, week: TodayInfo[]): Promise<PoolStatus> {
   const base = { slug: pool.slug, name: pool.name, url: poolUrl(pool) };
   try {
     const page = await fetchPoolPage(base.url);
-    return { ...base, ok: true, error: null, day: analyzeDay(page, today), raw: page };
+    const days = week.map((d) => analyzeDay(page, d));
+    // Les corps de texte bruts (section.body) ne servent qu'à l'analyse
+    // côté serveur : on ne les envoie pas au navigateur.
+    const raw: PoolInfo = {
+      intro: page.intro,
+      notices: page.notices,
+      sections: page.sections.map(({ title, lines }) => ({ title, lines })),
+    };
+    return { ...base, ok: true, error: null, week: days, raw };
   } catch (err) {
     return {
       ...base,
       ok: false,
       error: err instanceof Error ? err.message : String(err),
-      day: null,
+      week: null,
       raw: null,
     };
   }
 }
 
 export async function getStatusReport(): Promise<StatusReport> {
-  const today = await getTodayInfo();
-  const pools = await Promise.all(POOLS.map((p) => getPoolStatus(p, today)));
+  const week = await getWeekInfo();
+  const pools = await Promise.all(POOLS.map((p) => getPoolStatus(p, week)));
   return {
     updatedAt: new Date().toISOString(),
+    days: week.map(({ dateKey, weekday }) => ({ dateKey, weekday })),
     pools,
   };
 }

@@ -161,10 +161,12 @@ export function parseDateRange(text: string, refYear: number): DateRange | null 
     return { from: dateKey(y, monthIdx, Number(m[1])), to: dateKey(y, monthIdx, Number(m[2])) };
   }
 
-  // à compter du / à partir du / dès le 5 juin (2026)? — éventuellement
-  // combiné avec « jusqu'au 30 août (2026)? » dans la même phrase
+  // à compter du / à partir du / dès le / depuis le 5 juin (2026)? —
+  // éventuellement combiné avec « jusqu'au 30 août (2026)? » dans la même phrase
   const fromM = t.match(
-    new RegExp(`(?:a compter du|a partir du|des le)\\s+(\\d{1,2})(?:er)?\\s+(${MONTH_RE})\\s*(\\d{4})?`)
+    new RegExp(
+      `(?:a compter du|a partir du|des le|depuis le)\\s+(\\d{1,2})(?:er)?\\s+(${MONTH_RE})\\s*(\\d{4})?`
+    )
   );
   const toM = t.match(new RegExp(`jusqu'?au\\s+(\\d{1,2})(?:er)?\\s+(${MONTH_RE})\\s*(\\d{4})?`));
   if (fromM || toM) {
@@ -178,6 +180,19 @@ export function parseDateRange(text: string, refYear: number): DateRange | null 
   }
 
   return null;
+}
+
+/** Date isolée (« le samedi 20 juin », « ce 14 juillet ») → plage d'un jour */
+export function parseSingleDate(text: string, refYear: number): DateRange | null {
+  const t = norm(text);
+  const m = t.match(
+    new RegExp(
+      `\\b(?:le|ce)\\s+(?:(?:${DAY_NAMES.join("|")})\\s+)?(\\d{1,2})(?:er)?\\s+(${MONTH_RE})\\s*(\\d{4})?`
+    )
+  );
+  if (!m) return null;
+  const k = dateKey(m[3] ? Number(m[3]) : refYear, MONTHS.indexOf(m[2]), Number(m[1]));
+  return { from: k, to: k };
 }
 
 // ---------------------------------------------------------------------------
@@ -288,18 +303,20 @@ function extractAlerts(texts: string[]): string[] {
   return alerts.slice(0, 6);
 }
 
-function findStrongClosure(texts: string[]): string | null {
+function findStrongClosure(texts: string[], today: TodayInfo): string | null {
   for (const text of texts) {
     const sentences = text.split(/(?<=[.!])\s+/);
     for (const sentence of sentences) {
       const n = norm(sentence);
       const m = n.match(STRONG_CLOSURE_RE);
-      // « fermée jusqu'au … » dans le passé ne compte pas — trop subtil sans
-      // analyse : on reste prudent et on signale, sauf si la phrase parle
-      // explicitement d'une réouverture déjà effectuée.
-      if (m && !/rouvert|a rouvert|reouverture effectuee|s'est terminee/.test(n)) {
-        return sentence.trim().slice(0, 300);
-      }
+      if (!m) continue;
+      // Réouverture déjà annoncée → la fermeture est passée
+      if (/rouvert|a rouvert|reouverture effectuee|s'est terminee/.test(n)) continue;
+      // Fermeture datée (« jusqu'au 14 juin », « le samedi 20 juin ») :
+      // ne s'applique qu'aux jours couverts — important pour la vue semaine.
+      const range = parseDateRange(sentence, today.year) ?? parseSingleDate(sentence, today.year);
+      if (range && (today.dateKey < range.from || today.dateKey > range.to)) continue;
+      return sentence.trim().slice(0, 300);
     }
   }
   return null;
@@ -367,6 +384,8 @@ export function basinLabel(line: string): string {
   if (cut > 0) label = label.slice(0, cut);
   label = label
     .replace(/[*:]/g, " ")
+    // « petit bassin de la piscine Léo Lagrange » → « petit bassin »
+    .replace(/\s+de la piscine\b.*$/i, "")
     .replace(/\s+/g, " ")
     .trim()
     .replace(/^(les|le|la)\s+/i, "");
@@ -466,7 +485,7 @@ export function analyzeDay(page: PageSections, today: TodayInfo): DayStatus {
   const alerts = extractAlerts([...allTexts, ...page.sections.map((s) => s.body)]);
 
   // 1. Fermeture exceptionnelle annoncée hors horaires → prioritaire
-  const strongClosure = findStrongClosure(allTexts);
+  const strongClosure = findStrongClosure(allTexts, today);
   if (strongClosure) {
     return {
       openToday: false,
@@ -512,6 +531,15 @@ export function analyzeDay(page: PageSections, today: TodayInfo): DayStatus {
     } else {
       selected = school ?? undated.find((b) => b.periodType === null) ?? vacation ?? null;
       if (undated.length > 1 || today.isSchoolHoliday === null) confidence = "low";
+      // Bloc choisi faute de mieux alors qu'il contredit le calendrier
+      // scolaire (ex. horaires « vacances » en période scolaire parce que le
+      // bloc scolaire est expiré) : à vérifier sur la page officielle.
+      if (
+        (today.isSchoolHoliday === false && selected?.periodType === "vacation") ||
+        (today.isSchoolHoliday === true && selected?.periodType === "school")
+      ) {
+        confidence = "low";
+      }
     }
   }
 
@@ -548,6 +576,27 @@ export function analyzeDay(page: PageSections, today: TodayInfo): DayStatus {
   };
   const derived: { fromLabel: string | null; label: string; closed: TimeSlot[]; note: string }[] =
     [];
+  /**
+   * Ajoute un bassin dérivé sans doublon : un même bassin cité par plusieurs
+   * règles (ex. parenthèses du jeudi ET du vendredi) ne donne qu'une ligne,
+   * et les restrictions du jour priment sur les mentions des autres jours.
+   */
+  const addDerived = (
+    fromLabel: string | null,
+    label: string,
+    closed: TimeSlot[],
+    note: string
+  ) => {
+    const existing = derived.find((d) => d.fromLabel === fromLabel && d.label === label);
+    if (!existing) {
+      derived.push({ fromLabel, label, closed, note });
+      return;
+    }
+    if (closed.length > 0) {
+      if (existing.closed.length === 0) existing.note = note;
+      existing.closed.push(...closed);
+    }
+  };
 
   let currentLabel: string | null = null;
   let sawAnyRule = false;
@@ -614,24 +663,41 @@ export function analyzeDay(page: PageSections, today: TodayInfo): DayStatus {
         continue;
       }
 
+      // Fermeture partielle d'un bassin avec heures (« Le petit bassin est
+      // fermé le lundi, mardi et mercredi de 18h à 21h ») : ce sont des heures
+      // de FERMETURE, pas d'ouverture — bassin dérivé aux créneaux réduits.
+      // currentLabel reste inchangé : les lignes suivantes (« Jeudi : … »)
+      // appartiennent toujours au bassin principal.
+      if (mentionsFerme && mentionsBasin) {
+        sawAnyRule = true;
+        // Le bassin apparaît tous les jours : créneaux réduits quand la
+        // fermeture s'applique, horaires complets de la piscine sinon —
+        // ainsi la ligne ne disparaît pas d'un jour à l'autre.
+        const appliesToday = days === null || days.has(today.weekday);
+        addDerived(currentLabel, basinLabel(cleaned), appliesToday ? times : [], piece.trim());
+        continue;
+      }
+
       // Règle avec heures — éventuellement étiquetée inline
       // (« Bassin nordique uniquement de 10h à 20h »)
       const label = mentionsBasin ? basinLabel(cleaned) || currentLabel : currentLabel;
       if (mentionsBasin) currentLabel = label;
       sawAnyRule = true;
       const appliesToday = days === null || days.has(today.weekday);
-      if (!appliesToday) continue;
-      ensureBasin(label).slots.push(...times);
       for (const note of notes) {
         // « (petit bassin fermé de 17h à 19h) » → bassin dérivé avec créneaux
-        // réduits (affiché comme ligne de bassin, pas comme alerte)
+        // réduits (affiché comme ligne de bassin, pas comme alerte). Déclaré
+        // même les jours sans restriction, pour que la ligne du bassin
+        // n'apparaisse pas et disparaisse au fil de la semaine.
         if (BASIN_RE.test(norm(note))) {
           const closed = parseTimeRanges(note);
           if (closed.length > 0) {
-            derived.push({ fromLabel: label, label: basinLabel(note), closed, note });
+            addDerived(label, basinLabel(note), appliesToday ? closed : [], note);
           }
         }
       }
+      if (!appliesToday) continue;
+      ensureBasin(label).slots.push(...times);
     }
   }
 

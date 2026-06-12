@@ -442,4 +442,115 @@ describe("analyzeDay — cas réels", () => {
     expect(r.openToday).toBe(true);
     expect(r.alerts.some((a) => /vidange/i.test(a))).toBe(true);
   });
+
+  // Reproduit la page Léo Lagrange : ligne de fermeture partielle du petit
+  // bassin AVEC jours et heures, au milieu de la grille d'horaires
+  const leoLagrange = page([
+    {
+      title: "Horaires vacances scolaires (hors été)",
+      lines: [
+        text("Lundi : 14h - 21h"),
+        text("Mardi : 9h - 12h / 14h - 21h"),
+        text(
+          "Le petit bassin de la piscine Léo Lagrange est fermé le lundi, mardi et mercredi de 18h à 21h."
+        ),
+        text("Jeudi : 9h - 12h / 14h - 18h"),
+        text("Vendredi : 9h - 12h / 14h - 18h"),
+      ],
+    },
+  ]);
+
+  it("Léo Lagrange : « petit bassin fermé lundi…de 18h à 21h » → créneaux RÉDUITS, pas une ouverture", () => {
+    const r = analyzeDay(leoLagrange, today(20260615, 0, true)); // lundi, vacances
+    expect(r.slotsToday).toEqual([{ start: "14:00", end: "21:00" }]);
+    const petit = r.basins.find((b) => /petit bassin/i.test(b.label ?? ""));
+    // fermé 18h-21h → ouvert seulement 14h-18h (et surtout PAS « ouvert 18h-21h »)
+    expect(petit?.slots).toEqual([{ start: "14:00", end: "18:00" }]);
+  });
+
+  it("Léo Lagrange : la ligne de fermeture ne capture pas les jours suivants (Jeudi reste au bassin principal)", () => {
+    const r = analyzeDay(leoLagrange, today(20260618, 3, true)); // jeudi, vacances
+    expect(r.openToday).toBe(true);
+    expect(r.slotsToday).toEqual([
+      { start: "09:00", end: "12:00" },
+      { start: "14:00", end: "18:00" },
+    ]);
+    // les horaires du jeudi appartiennent au bassin principal (label null)
+    expect(r.basins.find((b) => b.slots.length > 0)?.label).toBeNull();
+    // le petit bassin reste affiché, aux horaires complets de la piscine
+    // (sa fermeture ne s'applique pas le jeudi)
+    const petit = r.basins.find((b) => /petit bassin/i.test(b.label ?? ""));
+    expect(petit?.slots).toEqual([
+      { start: "09:00", end: "12:00" },
+      { start: "14:00", end: "18:00" },
+    ]);
+  });
+
+  it("bloc « vacances » choisi faute de mieux en période scolaire → confiance faible", () => {
+    // Léo Lagrange réel : le bloc scolaire est daté « jusqu'au 5 juin 2026 »
+    // et expiré, il ne reste que le bloc vacances alors qu'on est en période
+    // scolaire.
+    const p = page([
+      {
+        title: "Horaires en période scolaire jusqu'au 5 juin 2026",
+        lines: [text("Lundi : 12h - 14h / 16h - 21h")],
+      },
+      {
+        title: "Horaires vacances scolaires (hors été)",
+        lines: [text("Lundi : 14h - 21h")],
+      },
+    ]);
+    const r = analyzeDay(p, today(20260615, 0, false)); // lundi 15 juin, période scolaire
+    expect(r.slotsToday).toEqual([{ start: "14:00", end: "21:00" }]);
+    expect(r.confidence).toBe("low");
+  });
+
+  it("fermeture exceptionnelle datée « jusqu'au … » → fermée pendant, ouverte après (vue semaine)", () => {
+    const p = page(
+      [{ title: "Horaires", lines: [text("Tous les jours de 10h à 20h")] }],
+      "La piscine est fermée jusqu'au 14 juin 2026 en raison d'un problème technique."
+    );
+    const pendant = analyzeDay(p, today(20260612, 4));
+    expect(pendant.openToday).toBe(false);
+    expect(pendant.closureReason).toMatch(/problème technique/i);
+    const apres = analyzeDay(p, today(20260615, 0));
+    expect(apres.openToday).toBe(true);
+    expect(apres.slotsToday).toEqual([{ start: "10:00", end: "20:00" }]);
+  });
+
+  it("Alex Jany : le petit bassin apparaît aussi les jours SANS restriction (horaires complets)", () => {
+    const p = page([
+      {
+        title: "Horaires en période scolaire",
+        lines: [
+          text("Jeudi : 12h - 14h / 16h - 19h (petit bassin fermé de 17h à 19h)"),
+          text("Vendredi : 12h - 14h / 16h - 21h (petit bassin fermé de 17h à 21h)"),
+          text("Samedi : 15h - 19h"),
+        ],
+      },
+    ]);
+    // Samedi : aucune restriction → petit bassin aux horaires de la piscine
+    const samedi = analyzeDay(p, today(20260613, 5));
+    const petitSam = samedi.basins.find((b) => /petit/i.test(b.label ?? ""));
+    expect(petitSam?.slots).toEqual([{ start: "15:00", end: "19:00" }]);
+    // Vendredi : restriction du vendredi (17h-21h), pas celle du jeudi
+    const vendredi = analyzeDay(p, today(20260612, 4));
+    const petitVen = vendredi.basins.find((b) => /petit/i.test(b.label ?? ""));
+    expect(petitVen?.slots).toEqual([
+      { start: "12:00", end: "14:00" },
+      { start: "16:00", end: "17:00" },
+    ]);
+    // …et une seule ligne « petit bassin », pas une par parenthèse
+    expect(vendredi.basins.filter((b) => /petit/i.test(b.label ?? ""))).toHaveLength(1);
+  });
+
+  it("fermeture exceptionnelle à date unique « le samedi 20 juin » → fermée ce jour-là seulement", () => {
+    const p = page(
+      [{ title: "Horaires", lines: [text("Tous les jours de 10h à 20h")] }],
+      "La piscine sera exceptionnellement fermée le samedi 20 juin pour une compétition."
+    );
+    expect(analyzeDay(p, today(20260620, 5)).openToday).toBe(false);
+    expect(analyzeDay(p, today(20260619, 4)).openToday).toBe(true);
+    expect(analyzeDay(p, today(20260621, 6)).openToday).toBe(true);
+  });
 });

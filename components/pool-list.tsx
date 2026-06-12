@@ -2,6 +2,40 @@
 
 import { useEffect, useState } from "react";
 import type { PoolStatus } from "@/lib/status";
+import type { SectionLine } from "@/lib/scrape";
+
+/** Ligne d'horaires : « Lundi : … », « Du lundi au jeudi : … », « Samedi et dimanche … » */
+const DAY_LINE_RE = /^(?:du|le)?\s*(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b/i;
+
+/**
+ * Réordonne l'affichage d'une section : dans chaque sous-bloc (délimité par
+ * les sous-titres), les lignes par jour restent groupées et les notes en
+ * prose (« Le petit bassin est fermé… ») passent après — la mairie les
+ * insère parfois au milieu de la grille.
+ */
+function orderLines(lines: SectionLine[]): SectionLine[] {
+  const out: SectionLine[] = [];
+  let dayLines: SectionLine[] = [];
+  let notes: SectionLine[] = [];
+  const flush = () => {
+    // Sans ligne par jour, l'ordre d'origine est conservé
+    out.push(...(dayLines.length > 0 ? [...dayLines, ...notes] : notes));
+    dayLines = [];
+    notes = [];
+  };
+  for (const line of lines) {
+    if (line.kind === "heading") {
+      flush();
+      out.push(line);
+    } else if (DAY_LINE_RE.test(line.text)) {
+      dayLines.push(line);
+    } else {
+      notes.push(line);
+    }
+  }
+  flush();
+  return out;
+}
 
 type LiveState =
   | { kind: "open"; until: string }
@@ -20,7 +54,7 @@ function nowInToulouse(): string {
 }
 
 function liveState(pool: PoolStatus, now: string | null): LiveState {
-  const day = pool.day;
+  const day = pool.week?.[0];
   if (!day) return { kind: "unknown" };
   if (!day.openToday || day.slotsToday.length === 0) {
     return { kind: "closed", reason: day.closureReason };
@@ -100,7 +134,7 @@ function Badge({ state }: { state: LiveState }) {
 
 function PoolCard({ pool, now }: { pool: PoolStatus; now: string | null }) {
   const state = liveState(pool, now);
-  const day = pool.day;
+  const day = pool.week?.[0];
 
   return (
     <li className="rounded-2xl bg-white p-4 shadow-md shadow-pink-100/50">
@@ -202,7 +236,7 @@ function PoolCard({ pool, now }: { pool: PoolStatus; now: string | null }) {
               >
                 <summary className="cursor-pointer font-medium text-slate-700">{s.title}</summary>
                 <div className="mt-1.5 space-y-1.5">
-                  {s.lines.map((line, i) =>
+                  {orderLines(s.lines).map((line, i) =>
                     line.kind === "heading" ? (
                       <p key={i} className="pt-1 font-semibold text-slate-700">
                         {line.text}
