@@ -46,7 +46,9 @@ export function WeekTimeline({ pools, days }: { pools: PoolStatus[]; days: WeekD
         Horaires par jour
       </h2>
 
-      <div className="mt-3 flex gap-1.5 overflow-x-auto pb-0.5">
+      {/* 7 colonnes égales : tient toujours dans la largeur de l'écran,
+          sans conteneur défilant (pas de barre de scroll parasite) */}
+      <div className="mt-3 grid grid-cols-7 gap-1 sm:gap-1.5">
         {DAY_LABELS.map((label, wd) => {
           const isSel = selected === wd;
           return (
@@ -55,7 +57,7 @@ export function WeekTimeline({ pools, days }: { pools: PoolStatus[]; days: WeekD
               type="button"
               onClick={() => setSelected(wd)}
               aria-pressed={isSel}
-              className={`shrink-0 rounded-full px-3 py-1 text-xs transition-colors ${
+              className={`rounded-full px-0 py-1 text-center text-xs transition-colors ${
                 isSel
                   ? "bg-gradient-to-r from-pink-500 to-fuchsia-600 font-semibold text-white shadow-sm"
                   : "bg-fuchsia-50 font-medium text-fuchsia-900 hover:bg-fuchsia-100"
