@@ -41,15 +41,18 @@ export async function removeSubscription(endpoint: string): Promise<void> {
   await db().from("push_subscriptions").delete().eq("endpoint", endpoint);
 }
 
-/** Abonnements concernés par une piscine : ceux qui la suivent, ou « toutes ». */
-export async function getSubscriptionsForPool(slug: string): Promise<StoredSubscription[]> {
+export async function getAllSubscriptions(): Promise<StoredSubscription[]> {
   const { data, error } = await db()
     .from("push_subscriptions")
     .select("endpoint,p256dh,auth,pools");
   if (error) throw error;
-  return (data ?? []).filter(
-    (s) => !Array.isArray(s.pools) || s.pools.length === 0 || s.pools.includes(slug)
-  ) as StoredSubscription[];
+  return (data ?? []) as StoredSubscription[];
+}
+
+/** Abonnements concernés par une piscine : ceux qui la suivent, ou « toutes ». */
+export async function getSubscriptionsForPool(slug: string): Promise<StoredSubscription[]> {
+  const all = await getAllSubscriptions();
+  return all.filter((s) => !s.pools || s.pools.length === 0 || s.pools.includes(slug));
 }
 
 export async function getClosureSignatures(): Promise<Map<string, string>> {
