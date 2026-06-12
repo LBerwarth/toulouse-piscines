@@ -65,6 +65,11 @@ export default async function Home() {
           Projet personnel, non affilié à la mairie de Toulouse. Vérifiez les
           informations critiques sur la page officielle de chaque piscine.
         </p>
+        <p className="mt-2">
+          <a href="/confidentialite" className="underline underline-offset-2 hover:text-fuchsia-700">
+            Confidentialité
+          </a>
+        </p>
       </footer>
     </main>
   );
