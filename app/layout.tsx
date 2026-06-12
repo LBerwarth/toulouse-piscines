@@ -39,7 +39,7 @@ export default function RootLayout({
         />
         <div
           aria-hidden
-          className="fixed inset-0 -z-10 bg-gradient-to-b from-white/80 via-[#fdf8fc]/88 to-[#fdf8fc]/96"
+          className="fixed inset-0 -z-10 bg-gradient-to-b from-[#e4f0fc]/86 via-[#cfe2f7]/93 to-[#bcd6f0]/98"
         />
         <PwaRegister />
         {children}
