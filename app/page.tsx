@@ -59,8 +59,19 @@ export default async function Home() {
 
       <footer className="mt-10 text-center text-xs text-slate-400">
         <p>
-          Projet personnel, non affilié à la mairie de Toulouse. Vérifiez les
-          informations critiques sur la page officielle de chaque piscine.
+          Application personnelle et indépendante, non affiliée à la mairie de
+          Toulouse ni à Toulouse Métropole et ne les représentant pas. Données
+          issues des pages officielles des piscines sur{" "}
+          <a
+            href="https://metropole.toulouse.fr/sortir/sport/les-piscines-toulousaines"
+            className="underline underline-offset-2 hover:text-fuchsia-700"
+            target="_blank"
+            rel="noreferrer"
+          >
+            metropole.toulouse.fr
+          </a>
+          . Vérifiez toujours les informations critiques sur la page officielle
+          de chaque piscine.
         </p>
         <p className="mt-2">
           <a href="/confidentialite" className="underline underline-offset-2 hover:text-fuchsia-700">
