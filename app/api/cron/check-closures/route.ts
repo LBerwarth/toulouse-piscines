@@ -24,7 +24,9 @@ export async function GET(req: Request) {
 
   for (const pool of POOLS) {
     try {
-      const page = await fetchPoolPage(poolUrl(pool));
+      // `fresh: true` : on contourne le Data Cache de Next pour scruter la page
+      // en direct à chaque passage du cron (sinon détection retardée ~1 h).
+      const page = await fetchPoolPage(poolUrl(pool), { fresh: true });
       const day = analyzeDay(page, today);
       const signature = exceptionalSignature(day) ?? "";
       const before = previous.get(pool.slug) ?? "";

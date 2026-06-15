@@ -1,0 +1,39 @@
+name: Maintien du cron actif
+
+# GitHub désactive les workflows planifiés (schedule) après 60 jours sans
+# activité dans le dépôt. Comme le projet est terminé et reçoit peu de commits,
+# le cron horaire des fermetures (check-closures.yml) finirait par être coupé.
+#
+# Ce job tourne chaque jour et, dès que le dernier commit date de plus de
+# 50 jours, pousse un commit vide. Cette activité réarme le compteur des 60
+# jours pour TOUS les workflows planifiés du dépôt — y compris celui-ci.
+# Résultat : ~7 commits/an du bot, et le cron ne s'éteint jamais.
+
+on:
+  schedule:
+    - cron: "0 4 * * *" # tous les jours à 04:00 UTC
+  workflow_dispatch: {} # déclenchement manuel (pour vérifier le job)
+
+permissions:
+  contents: write # nécessaire pour pousser le commit vide
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Commit vide si le dépôt est inactif depuis longtemps
+        run: |
+          last=$(git log -1 --format=%ct)
+          now=$(date +%s)
+          days=$(( (now - last) / 86400 ))
+          echo "Dernier commit il y a $days jour(s)."
+          if [ "$days" -lt 50 ]; then
+            echo "Dépôt encore actif : rien à faire."
+            exit 0
+          fi
+          echo "Plus de 50 jours d'inactivité : on pousse un commit vide."
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty -m "chore: keepalive — maintien du cron des fermetures actif"
+          git push
