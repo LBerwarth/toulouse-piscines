@@ -1,5 +1,5 @@
 import "server-only";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { db } from "./supabase";
 
 export interface StoredSubscription {
   endpoint: string;
@@ -7,16 +7,6 @@ export interface StoredSubscription {
   auth: string;
   /** slugs des piscines suivies ; tableau vide = toutes les piscines */
   pools: string[];
-}
-
-let cached: SupabaseClient | null = null;
-
-function db(): SupabaseClient {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SECRET_KEY;
-  if (!url || !key) throw new Error("Supabase non configuré (SUPABASE_URL / SUPABASE_SECRET_KEY)");
-  if (!cached) cached = createClient(url, key, { auth: { persistSession: false } });
-  return cached;
 }
 
 export async function saveSubscription(

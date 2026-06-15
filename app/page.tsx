@@ -1,9 +1,12 @@
 import { getStatusReport } from "@/lib/status";
 import { PoolsView } from "@/components/pools-view";
 
-// Régénéré au plus toutes les 30 minutes pour attraper les fermetures
-// publiées en cours de journée par la mairie.
-export const revalidate = 1800;
+// Rendu dynamique : on relit à chaque visite le cache partagé (Supabase), qui
+// rescanne les pages au plus toutes les 30 min. Le visiteur qui déclenche le
+// rafraîchissement voit donc tout de suite la nouvelle date, sans recharger.
+// (revalidate = 0 garde malgré tout en cache les fetch à revalidation positive,
+//  comme le calendrier scolaire mis en cache 24 h.)
+export const revalidate = 0;
 
 export default async function Home() {
   const report = await getStatusReport();

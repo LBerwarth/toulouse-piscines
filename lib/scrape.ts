@@ -21,9 +21,16 @@ function clean(text: string): string {
   return text.replace(/ /g, " ").replace(/\s+/g, " ").trim();
 }
 
-export async function fetchPoolPage(url: string): Promise<PageSections> {
+/**
+ * Récupère et analyse une page piscine.
+ * @param opts.fresh force une requête réseau (sans le Data Cache de Next) —
+ *   utilisé quand on rafraîchit volontairement le cache applicatif (cf. status.ts).
+ */
+export async function fetchPoolPage(url: string, opts?: { fresh?: boolean }): Promise<PageSections> {
   const res = await fetch(url, {
-    next: { revalidate: REVALIDATE_SECONDS },
+    // On ne peut pas combiner `cache` et `next.revalidate` : soit on force le
+    // réseau, soit on s'appuie sur le Data Cache (30 min).
+    ...(opts?.fresh ? { cache: "no-store" as const } : { next: { revalidate: REVALIDATE_SECONDS } }),
     headers: { "User-Agent": "toulouse-piscines (projet personnel)" },
   });
   if (!res.ok) {
