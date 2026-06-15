@@ -8,11 +8,20 @@ name: Maintien du cron actif
 # 50 jours, pousse un commit vide. Cette activité réarme le compteur des 60
 # jours pour TOUS les workflows planifiés du dépôt — y compris celui-ci.
 # Résultat : ~7 commits/an du bot, et le cron ne s'éteint jamais.
+#
+# Déclenchement manuel avec « force = true » : pousse un commit vide tout de
+# suite, quel que soit l'âge du dernier commit (sert à vérifier que le bot a
+# bien le droit de pousser).
 
 on:
   schedule:
     - cron: "0 4 * * *" # tous les jours à 04:00 UTC
-  workflow_dispatch: {} # déclenchement manuel (pour vérifier le job)
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Forcer un commit vide même si le dépôt est actif (vérification)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write # nécessaire pour pousser le commit vide
@@ -22,17 +31,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Commit vide si le dépôt est inactif depuis longtemps
+      - name: Commit vide si le dépôt est inactif depuis longtemps (ou si forcé)
+        env:
+          FORCE: ${{ inputs.force }}
         run: |
           last=$(git log -1 --format=%ct)
           now=$(date +%s)
           days=$(( (now - last) / 86400 ))
-          echo "Dernier commit il y a $days jour(s)."
-          if [ "$days" -lt 50 ]; then
+          echo "Dernier commit il y a $days jour(s). force=$FORCE"
+          if [ "$FORCE" != "true" ] && [ "$days" -lt 50 ]; then
             echo "Dépôt encore actif : rien à faire."
             exit 0
           fi
-          echo "Plus de 50 jours d'inactivité : on pousse un commit vide."
+          echo "On pousse un commit vide de maintien."
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit --allow-empty -m "chore: keepalive — maintien du cron des fermetures actif"
