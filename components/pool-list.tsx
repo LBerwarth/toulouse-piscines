@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { PoolStatus } from "@/lib/status";
 import type { SectionLine } from "@/lib/scrape";
+import { poolDirectionsUrl } from "@/lib/pools";
 
 /** Ligne d'horaires : « Lundi : … », « Du lundi au jeudi : … », « Samedi et dimanche … » */
 const DAY_LINE_RE = /^(?:du|le)?\s*(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b/i;
@@ -175,6 +176,16 @@ function PoolCard({
             className="text-base font-semibold text-slate-900 hover:text-fuchsia-700"
           >
             {pool.name}
+          </a>
+          <a
+            href={poolDirectionsUrl(pool)}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={`Itinéraire vers la piscine ${pool.name}`}
+            title="Itinéraire — ouvre votre app de navigation"
+            className="mt-0.5 shrink-0 text-base leading-none text-slate-400 transition-colors hover:text-fuchsia-700"
+          >
+            📍
           </a>
         </div>
         <Badge state={state} />

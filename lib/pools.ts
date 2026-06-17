@@ -39,3 +39,15 @@ export const POOLS: Pool[] = [
 export function poolUrl(pool: Pool): string {
   return `${POOL_BASE_URL}${pool.slug}`;
 }
+
+/**
+ * Lien « itinéraire » universel vers la piscine. Sur mobile, le toucher ouvre
+ * l'app de navigation par défaut (Google Maps, Plans…) directement en mode
+ * itinéraire ; sinon Google Maps dans le navigateur. La destination est
+ * cherchée par nom + « Toulouse » — fiable pour ces équipements municipaux
+ * référencés, sans dépendre d'une adresse postale stockée.
+ */
+export function poolDirectionsUrl(pool: Pool): string {
+  const destination = encodeURIComponent(`Piscine ${pool.name} Toulouse`);
+  return `https://www.google.com/maps/dir/?api=1&destination=${destination}`;
+}
