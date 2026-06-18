@@ -17,7 +17,15 @@ function formatDateKey(dateKey: number): string {
   }).format(new Date(y, m - 1, d));
 }
 
-export function WeekTimeline({ pools, days }: { pools: PoolStatus[]; days: WeekDayRef[] }) {
+export function WeekTimeline({
+  pools,
+  days,
+  isFavorite,
+}: {
+  pools: PoolStatus[];
+  days: WeekDayRef[];
+  isFavorite?: (slug: string) => boolean;
+}) {
   const todayWeekday = days[0]?.weekday ?? 0;
   const [selected, setSelected] = useState(todayWeekday);
 
@@ -76,7 +84,12 @@ export function WeekTimeline({ pools, days }: { pools: PoolStatus[]; days: WeekD
         </p>
       )}
 
-      <TimelineChart entries={entries} showNow={isToday} rangeSlots={rangeSlots} />
+      <TimelineChart
+        entries={entries}
+        showNow={isToday}
+        rangeSlots={rangeSlots}
+        isFavorite={isFavorite}
+      />
     </section>
   );
 }

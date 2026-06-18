@@ -134,7 +134,7 @@ export function PoolsView({ pools, days }: { pools: PoolStatus[]; days: WeekDayR
         </p>
       ) : (
         <>
-          <WeekTimeline pools={filtered} days={days} />
+          <WeekTimeline pools={filtered} days={days} isFavorite={notif.isFavorite} />
           <PoolList
             pools={filtered}
             isFavorite={notif.isFavorite}

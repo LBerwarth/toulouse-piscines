@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import type { BasinSchedule, DayStatus, TimeSlot } from "@/lib/status";
 
 export interface TimelineEntry {
@@ -24,10 +24,20 @@ function nowMinutesInToulouse(): number {
   return toMinutes(hm);
 }
 
+/** Snapshot « heure inconnue » : rendu serveur, hydratation, et jours ≠ aujourd'hui. */
+const noTime = (): number | null => null;
+const noSubscribe = (): (() => void) => () => {};
+
+/** Réévalue l'heure chaque minute pour faire avancer la ligne « maintenant ». */
+function subscribeToMinute(onChange: () => void): () => void {
+  const timer = setInterval(onChange, 60_000);
+  return () => clearInterval(timer);
+}
+
 type Row =
-  | { kind: "group"; key: string; label: string }
-  | { kind: "bar"; key: string; label: string; sub: boolean; slots: TimeSlot[]; tip: string }
-  | { kind: "off"; key: string; label: string; sub: boolean; note: string };
+  | { kind: "group"; key: string; slug: string; label: string }
+  | { kind: "bar"; key: string; slug: string; label: string; sub: boolean; slots: TimeSlot[]; tip: string }
+  | { kind: "off"; key: string; slug: string; label: string; sub: boolean; note: string };
 
 function shortNote(note: string | null, fallback: string): string {
   const n = note ?? fallback;
@@ -38,9 +48,9 @@ function basinRow(poolName: string, slug: string, basin: BasinSchedule): Row {
   const label = basin.label ?? "bassin";
   const key = `${slug}:${label}`;
   if (basin.slots.length > 0) {
-    return { kind: "bar", key, label, sub: true, slots: basin.slots, tip: `${poolName} — ${label}` };
+    return { kind: "bar", key, slug, label, sub: true, slots: basin.slots, tip: `${poolName} — ${label}` };
   }
-  return { kind: "off", key, label, sub: true, note: shortNote(basin.note, "fermé") };
+  return { kind: "off", key, slug, label, sub: true, note: shortNote(basin.note, "fermé") };
 }
 
 function buildRows(entries: TimelineEntry[]): Row[] {
@@ -61,6 +71,7 @@ function buildRows(entries: TimelineEntry[]): Row[] {
         rows.push({
           kind: "bar",
           key: entry.slug,
+          slug: entry.slug,
           label: entry.name,
           sub: false,
           slots: day.slotsToday,
@@ -70,6 +81,7 @@ function buildRows(entries: TimelineEntry[]): Row[] {
         rows.push({
           kind: "off",
           key: entry.slug,
+          slug: entry.slug,
           label: entry.name,
           sub: false,
           note: shortNote(day.closureReason, "fermée"),
@@ -81,6 +93,7 @@ function buildRows(entries: TimelineEntry[]): Row[] {
         rows.push({
           kind: "bar",
           key: entry.slug,
+          slug: entry.slug,
           label: entry.name,
           sub: false,
           slots: main.slots,
@@ -90,6 +103,7 @@ function buildRows(entries: TimelineEntry[]): Row[] {
         rows.push({
           kind: "off",
           key: entry.slug,
+          slug: entry.slug,
           label: entry.name,
           sub: false,
           note: shortNote(main.note ?? day.closureReason, "fermée"),
@@ -98,7 +112,7 @@ function buildRows(entries: TimelineEntry[]): Row[] {
       for (const basin of labeled) rows.push(basinRow(entry.name, entry.slug, basin));
     } else {
       // Tous les bassins sont nommés (ex. Bellevue)
-      rows.push({ kind: "group", key: entry.slug, label: entry.name });
+      rows.push({ kind: "group", key: entry.slug, slug: entry.slug, label: entry.name });
       for (const basin of day.basins) rows.push(basinRow(entry.name, entry.slug, basin));
     }
   }
@@ -106,6 +120,7 @@ function buildRows(entries: TimelineEntry[]): Row[] {
     rows.push({
       kind: "off",
       key: entry.slug,
+      slug: entry.slug,
       label: entry.name,
       sub: false,
       note: "données indisponibles",
@@ -114,10 +129,20 @@ function buildRows(entries: TimelineEntry[]): Row[] {
   return rows;
 }
 
+/** Petite étoile dorée affichée à côté du nom d'une piscine suivie. */
+function FavStar() {
+  return (
+    <span className="text-amber-400" aria-label="Piscine suivie" title="Piscine suivie">
+      ★{" "}
+    </span>
+  );
+}
+
 export function TimelineChart({
   entries,
   showNow = false,
   rangeSlots,
+  isFavorite,
 }: {
   entries: TimelineEntry[];
   /** Afficher la ligne « maintenant » et la couleur « ouverte maintenant » */
@@ -125,16 +150,17 @@ export function TimelineChart({
   /** Créneaux servant à calibrer l'axe horaire (pour garder un axe stable
    *  quand on change de jour) ; par défaut les créneaux affichés */
   rangeSlots?: TimeSlot[];
+  /** Marque d'une ★ les piscines suivies (favoris) à côté de leur nom */
+  isFavorite?: (slug: string) => boolean;
 }) {
-  // Calculé après montage pour rester juste malgré le cache de 30 min (et
-  // éviter un décalage d'hydratation).
-  const [nowMin, setNowMin] = useState<number | null>(null);
-  useEffect(() => {
-    if (!showNow) return;
-    setNowMin(nowMinutesInToulouse());
-    const timer = setInterval(() => setNowMin(nowMinutesInToulouse()), 60_000);
-    return () => clearInterval(timer);
-  }, [showNow]);
+  // « null » au rendu serveur (cache 30 min) et à l'hydratation, puis l'heure
+  // réelle côté client quand on regarde aujourd'hui — useSyncExternalStore
+  // évite le décalage d'hydratation sans setState synchrone en effet.
+  const nowMin = useSyncExternalStore<number | null>(
+    showNow ? subscribeToMinute : noSubscribe,
+    showNow ? nowMinutesInToulouse : noTime,
+    noTime
+  );
 
   const rows = buildRows(entries);
   const shownSlots = rows.flatMap((r) => (r.kind === "bar" ? r.slots : []));
@@ -204,10 +230,15 @@ export function TimelineChart({
         if (row.kind === "group") {
           return (
             <p key={row.key} className="pt-1 text-xs font-semibold text-slate-800">
+              {isFavorite?.(row.slug) && <FavStar />}
               {row.label}
             </p>
           );
         }
+
+        // L'étoile ne s'affiche que sur la ligne portant le nom de la piscine
+        // (pas sur les bassins indentés).
+        const showStar = !row.sub && isFavorite?.(row.slug);
 
         // L'indentation des bassins (pl-3) s'applique au nom seul, pas à la
         // ligne entière : toutes les barres démarrent ainsi au même endroit.
@@ -219,6 +250,7 @@ export function TimelineChart({
                 : "break-words text-xs font-medium leading-tight text-slate-700"
             }
           >
+            {showStar && <FavStar />}
             {row.label}
           </p>
         );
