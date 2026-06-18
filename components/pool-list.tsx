@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import type { PoolStatus } from "@/lib/status";
 import type { SectionLine } from "@/lib/scrape";
 import { poolDirectionsUrl } from "@/lib/pools";
@@ -52,6 +52,12 @@ function nowInToulouse(): string {
     minute: "2-digit",
     hour12: false,
   }).format(new Date());
+}
+
+/** Réévalue l'heure chaque minute pour rafraîchir les badges « ouverte/fermée ». */
+function subscribeToMinute(onChange: () => void): () => void {
+  const timer = setInterval(onChange, 60_000);
+  return () => clearInterval(timer);
 }
 
 function liveState(pool: PoolStatus, now: string | null): LiveState {
@@ -305,16 +311,17 @@ export function PoolList({
   isFavorite?: (slug: string) => boolean;
   onToggleFavorite?: (slug: string) => void;
 }) {
-  // L'heure courante n'est calculée qu'après montage pour éviter un décalage
-  // entre le rendu serveur (mis en cache 30 min) et le navigateur.
-  const [now, setNow] = useState<string | null>(null);
-  useEffect(() => {
-    setNow(nowInToulouse());
-    const timer = setInterval(() => setNow(nowInToulouse()), 60_000);
-    return () => clearInterval(timer);
-  }, []);
+  // L'heure courante reste « null » au rendu serveur (mis en cache 30 min) et à
+  // l'hydratation, puis bascule sur l'heure réelle de Toulouse côté client —
+  // useSyncExternalStore garantit l'accord serveur/client sans setState en effet.
+  const now = useSyncExternalStore<string | null>(subscribeToMinute, nowInToulouse, () => null);
 
+  // Les piscines suivies (★) remontent en tête ; à l'intérieur de chaque
+  // groupe, l'ordre habituel s'applique (ouvertes d'abord, puis alphabétique).
   const sorted = [...pools].sort((a, b) => {
+    const favA = isFavorite?.(a.slug) ? 0 : 1;
+    const favB = isFavorite?.(b.slug) ? 0 : 1;
+    if (favA !== favB) return favA - favB;
     const diff = ORDER[liveState(a, now).kind] - ORDER[liveState(b, now).kind];
     return diff !== 0 ? diff : a.name.localeCompare(b.name, "fr");
   });
