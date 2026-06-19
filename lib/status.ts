@@ -47,7 +47,7 @@ async function getPoolStatus(pool: Pool, week: TodayInfo[], fresh: boolean): Pro
   const base = { slug: pool.slug, name: pool.name, url: poolUrl(pool), env: pool.env };
   try {
     const page = await fetchPoolPage(base.url, { fresh });
-    const days = week.map((d) => analyzeDay(page, d));
+    const days = week.map((d) => analyzeDay(page, d, pool));
     // Les corps de texte bruts (section.body) ne servent qu'à l'analyse
     // côté serveur : on ne les envoie pas au navigateur.
     const raw: PoolInfo = {

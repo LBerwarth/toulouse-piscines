@@ -110,21 +110,25 @@ export function PoolsView({ pools, days }: { pools: PoolStatus[]; days: WeekDayR
                 ? "bg-violet-600 text-white shadow-sm"
                 : "bg-white/70 text-violet-800 hover:bg-fuchsia-100"
             }`}
-            title="Recevoir une notification en cas de fermeture exceptionnelle"
+            title="Recevoir une notification en cas de fermeture ou de changement exceptionnel (horaires…)"
           >
             <span aria-hidden>{notif.subscribed ? "🔔" : "🔕"}</span>
-            {notif.subscribed ? "Alertes activées" : "M'alerter des fermetures"}
+            {notif.subscribed ? "Alertes activées" : "M'alerter"}
           </button>
         )}
       </div>
 
-      {notif.supported && (notif.subscribed || notif.denied) && (
+      {/* Toujours visible (pas seulement au survol) : sur mobile il n'y a pas
+          d'infobulle, c'est ici qu'on explique l'objet des notifications. */}
+      {notif.supported && (
         <p className="-mt-2 mb-4 text-xs text-slate-500">
           {notif.denied
             ? "Notifications bloquées par le navigateur — autorisez-les dans les réglages pour être alerté·e."
-            : notif.favorites.length > 0
-              ? "Vous serez alerté·e des fermetures exceptionnelles de vos piscines ★."
-              : "Vous serez alerté·e des fermetures exceptionnelles de toutes les piscines (ajoutez des ★ pour filtrer)."}
+            : notif.subscribed
+              ? notif.favorites.length > 0
+                ? "Vous serez alerté·e des fermetures et changements exceptionnels de vos piscines ★."
+                : "Vous serez alerté·e des fermetures et changements exceptionnels de toutes les piscines (ajoutez des ★ pour filtrer)."
+              : "Activez les alertes pour être prévenu·e des fermetures et changements exceptionnels (horaires prolongés, canicule…)."}
         </p>
       )}
 

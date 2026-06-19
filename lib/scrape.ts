@@ -6,6 +6,21 @@ export interface SectionLine {
   text: string;
 }
 
+/** Actualité du bloc « En bref » (canicule, fermetures, extensions d'horaires…) */
+export interface ShortNews {
+  /** Date de publication (attribut datetime, ex. « 2026-06-18 ») ou null */
+  date: string | null;
+  /** Titre de l'actualité (h3) */
+  title: string;
+  /** Texte complet, pour en extraire la période d'application */
+  text: string;
+  /**
+   * Piscines explicitement citées par un lien /annuaire/<slug>, avec le texte
+   * qui suit le lien (« : ouverture jusqu'à 20h ») d'où l'on tire l'horaire.
+   */
+  pools: { slug: string; after: string }[];
+}
+
 export interface PageSections {
   /** Texte d'introduction (chapeau) — contient les avis de travaux / fermetures exceptionnelles */
   intro: string;
@@ -13,6 +28,8 @@ export interface PageSections {
   sections: { title: string; body: string; lines: SectionLine[] }[];
   /** Autres encarts d'alerte trouvés dans la page */
   notices: string[];
+  /** Actualités « En bref » — la mairie y publie les annonces opérationnelles (hors grille d'horaires) */
+  shorts: ShortNews[];
 }
 
 const REVALIDATE_SECONDS = 1800;
@@ -127,5 +144,34 @@ export function parsePoolPage(html: string): PageSections {
     }
   });
 
-  return { intro, sections, notices };
+  // 3. Bloc « En bref » : actualités opérationnelles (canicule, fermetures,
+  // extensions d'horaires…). La mairie les publie ici, hors de la grille — le
+  // même bloc apparaît à l'identique sur toutes les pages piscines.
+  const shorts: ShortNews[] = [];
+  $(".block__shorts__list-item").each((_, el) => {
+    const item = $(el);
+    const date = item.find("time").first().attr("datetime") ?? null;
+    const title = clean(item.find(".title h3, h3").first().text());
+    const bodyEl = item.find(".text-formatted").first();
+    const text = clean((bodyEl.length > 0 ? bodyEl : item).text());
+    if (!title && !text) return;
+
+    const pools: { slug: string; after: string }[] = [];
+    item.find("a[href*='/annuaire/']").each((__, a) => {
+      const slug = ($(a).attr("href") ?? "").match(/\/annuaire\/([a-z0-9-]+)/)?.[1];
+      if (!slug || pools.some((p) => p.slug === slug)) return;
+      // Texte qui suit le lien jusqu'au lien suivant (« : ouverture jusqu'à 20h »).
+      // On parcourt les nœuds frères bruts pour capter aussi les nœuds texte.
+      let after = "";
+      for (let n = a.next; n; n = n.next) {
+        if (n.type === "tag" && n.name === "a") break;
+        after += $(n).text();
+      }
+      pools.push({ slug, after: clean(after) });
+    });
+
+    shorts.push({ date, title, text: text.slice(0, 1500), pools });
+  });
+
+  return { intro, sections, notices, shorts };
 }

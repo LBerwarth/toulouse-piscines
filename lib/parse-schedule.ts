@@ -1,4 +1,4 @@
-import type { PageSections, SectionLine } from "./scrape";
+import type { PageSections, SectionLine, ShortNews } from "./scrape";
 import type { TodayInfo } from "./today";
 
 export interface TimeSlot {
@@ -24,6 +24,11 @@ export interface DayStatus {
   confidence: "high" | "low";
   /** Détail par bassin quand la page distingue plusieurs bassins */
   basins: BasinSchedule[];
+  /**
+   * Actualités « En bref » concernant cette piscine ce jour-là (canicule,
+   * extensions d'horaires…). Affichées en bandeau et poussées en notification.
+   */
+  announcements: string[];
 }
 
 const DAY_NAMES = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
@@ -141,7 +146,7 @@ export function parseDateRange(text: string, refYear: number): DateRange | null 
   if (m) {
     const y1 = m[3] ? Number(m[3]) : refYear;
     let y2 = m[6] ? Number(m[6]) : y1;
-    let from = dateKey(y1, MONTHS.indexOf(m[2]), Number(m[1]));
+    const from = dateKey(y1, MONTHS.indexOf(m[2]), Number(m[1]));
     let to = dateKey(y2, MONTHS.indexOf(m[5]), Number(m[4]));
     if (to < from && !m[6]) {
       // période à cheval sur deux années (ex. « du 1er septembre au 30 juin »)
@@ -163,12 +168,15 @@ export function parseDateRange(text: string, refYear: number): DateRange | null 
 
   // à compter du / à partir du / dès le / depuis le 5 juin (2026)? —
   // éventuellement combiné avec « jusqu'au 30 août (2026)? » dans la même phrase
+  // Jour de semaine optionnel devant la date (« à compter du vendredi 19 juin »).
+  // Groupe non capturant : les index des captures restent inchangés.
+  const wd = `(?:(?:${DAY_NAMES.join("|")})\\s+)?`;
   const fromM = t.match(
     new RegExp(
-      `(?:a compter du|a partir du|des le|depuis le)\\s+(\\d{1,2})(?:er)?\\s+(${MONTH_RE})\\s*(\\d{4})?`
+      `(?:a compter du|a partir du|des le|depuis le)\\s+${wd}(\\d{1,2})(?:er)?\\s+(${MONTH_RE})\\s*(\\d{4})?`
     )
   );
-  const toM = t.match(new RegExp(`jusqu'?au\\s+(\\d{1,2})(?:er)?\\s+(${MONTH_RE})\\s*(\\d{4})?`));
+  const toM = t.match(new RegExp(`jusqu'?au\\s+${wd}(\\d{1,2})(?:er)?\\s+(${MONTH_RE})\\s*(\\d{4})?`));
   if (fromM || toM) {
     const from = fromM
       ? dateKey(fromM[3] ? Number(fromM[3]) : refYear, MONTHS.indexOf(fromM[2]), Number(fromM[1]))
@@ -242,14 +250,31 @@ function buildBlocks(
     blocks.push(current);
 
     for (const line of section.lines) {
-      // Seuls les sous-titres datés découpent la période ; tout le reste
-      // (y compris les étiquettes de bassin en <h4>) reste une règle.
+      const n = norm(line.text);
+      // Sous-titre daté (« Du 5 juin au 5 juillet ») → nouvelle sous-période.
+      // (Les étiquettes de bassin en <h4> restent des règles.)
       const candidateHeading =
-        (line.kind === "heading" && !/ferm/.test(norm(line.text))) ||
-        isDateOnlyLine(line.text, refYear);
+        (line.kind === "heading" && !/ferm/.test(n)) || isDateOnlyLine(line.text, refYear);
       const headingRange = candidateHeading ? parseDateRange(line.text, refYear) : null;
+
+      // Étiquette de sous-grille au sein d'une même section (« Horaires
+      // habituels en période scolaire », « Horaires exceptionnels vague de
+      // chaleur… ») : sépare deux grilles distinctes. Sans heures, avec un type
+      // de période ou une date reconnus — sinon ce serait une règle.
+      const labelType = periodTypeOf(line.text);
+      const labelRange = parseDateRange(line.text, refYear);
+      const isScheduleLabel =
+        !headingRange &&
+        /^horaires?\b/.test(n) &&
+        parseTimeRanges(line.text).length === 0 &&
+        !/ferm/.test(n) &&
+        (labelType !== null || labelRange !== null || /habituel|exceptionnel|chaleur|canicule/.test(n));
+
       if (headingRange) {
         current = { range: headingRange, periodType, rules: [] };
+        blocks.push(current);
+      } else if (isScheduleLabel) {
+        current = { range: labelRange, periodType: labelType, rules: [] };
         blocks.push(current);
       } else {
         current.rules.push(line.text);
@@ -320,6 +345,9 @@ export function exceptionalSignature(day: DayStatus): string | null {
   const parts: string[] = [];
   if (day.closureReason && EXCEPTIONAL_RE.test(day.closureReason)) parts.push(day.closureReason);
   for (const alert of day.alerts) if (EXCEPTIONAL_RE.test(alert)) parts.push(alert);
+  // Les actualités « En bref » concernant la piscine (canicule, extensions…)
+  // sont par nature notifiables — elles ne passent pas par EXCEPTIONAL_RE.
+  for (const a of day.announcements ?? []) parts.push(a);
   if (parts.length === 0) return null;
   return [...new Set(parts)].join(" | ").slice(0, 300);
 }
@@ -495,15 +523,129 @@ export function subtractSlots(slots: TimeSlot[], closed: TimeSlot[]): TimeSlot[]
 }
 
 // ---------------------------------------------------------------------------
+// Actualités « En bref » : extensions d'horaires et annonces ponctuelles
+// ---------------------------------------------------------------------------
+
+interface PoolNews {
+  /** Titre de l'actu — affiché en bandeau et poussé en notification */
+  title: string;
+  /** Heure de fermeture « HH:MM » si l'actu prolonge l'ouverture, sinon null */
+  extendClose: string | null;
+  /** Raison de fermeture si l'actu ferme la piscine et s'applique aujourd'hui */
+  closure: string | null;
+}
+
+/**
+ * Heure de fermeture annoncée dans le texte qui suit le lien de la piscine
+ * (« : ouverture jusqu'à 20h » → "20:00"). Exige un indice d'ouverture
+ * (« jusqu'à », « ouvert ») pour ne pas confondre avec une autre heure citée.
+ */
+function parseExtensionClose(after: string): string | null {
+  const t = norm(after);
+  if (!/jusqu|ouvert/.test(t)) return null;
+  const m = t.match(/(\d{1,2})\s*h\s*([0-5]\d)?/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2] ?? 0);
+  if (h > 24) return null;
+  return fmt(h, min);
+}
+
+/**
+ * Plage d'application d'une fermeture annoncée. « jusqu'au 14 juin » / « du X
+ * au Y » → plage explicite ; une date seule (« le 5 juin ») vaut un jour
+ * unique, SAUF si le texte décrit une fermeture durable (« pour la saison
+ * estivale », « fermera ») → début daté, fin ouverte (l'actu se retire quand
+ * la mairie la supprime de la page).
+ */
+function closureRange(text: string, refYear: number): DateRange | null {
+  const explicit = parseDateRange(text, refYear);
+  if (explicit) return explicit;
+  const single = parseSingleDate(text, refYear);
+  if (!single) return null;
+  if (/saison|estival|hivernal|fermera|ferme ses portes|jusqu'a nouvel ordre|definitiv/.test(norm(text)))
+    return { from: single.from, to: 99999999 };
+  return single;
+}
+
+/**
+ * Actualités « En bref » concernant cette piscine et applicables aujourd'hui.
+ * Le bloc est identique sur toutes les pages : on ne retient une actu que si
+ * elle cite la piscine, soit par un lien /annuaire/<slug> (extensions
+ * d'horaires), soit par son nom dans le titre/texte (fermetures saisonnières
+ * annoncées sans lien, ex. « Fermeture de la piscine Léo Lagrange… »).
+ */
+function collectPoolNews(
+  shorts: ShortNews[],
+  today: TodayInfo,
+  pool: { slug: string; name?: string } | undefined
+): PoolNews[] {
+  if (!pool) return [];
+  const name = pool.name ? norm(pool.name) : "";
+  const out: PoolNews[] = [];
+  for (const news of shorts) {
+    if (!news.title) continue;
+    const linked = news.pools.find((p) => p.slug === pool.slug);
+    const named = name.length > 0 && norm(`${news.title} ${news.text}`).includes(name);
+    if (!linked && !named) continue;
+    if (out.some((n) => n.title === news.title)) continue;
+
+    if (/\bferm/.test(norm(`${news.title} ${news.text}`))) {
+      // Fermeture : ne s'applique qu'aux jours couverts par sa plage (important
+      // pour la vue semaine et pour ne pas afficher une fermeture future/passée).
+      const range = closureRange(news.text, today.year) ?? closureRange(news.title, today.year);
+      if (range && (today.dateKey < range.from || today.dateKey > range.to)) continue;
+      out.push({ title: news.title, extendClose: null, closure: news.title });
+      continue;
+    }
+
+    // Actu non bloquante (extension d'horaire, info) : bornée par une plage
+    // explicite si présente (« à compter du vendredi 19 juin »…).
+    const range = parseDateRange(news.text, today.year);
+    if (range && (today.dateKey < range.from || today.dateKey > range.to)) continue;
+    out.push({
+      title: news.title,
+      extendClose: linked ? parseExtensionClose(linked.after) : null,
+      closure: null,
+    });
+  }
+  return out;
+}
+
+/** Repousse la fin du dernier créneau jusqu'à `close` (jamais avant). */
+function extendClosing(slots: TimeSlot[], close: string): TimeSlot[] {
+  if (slots.length === 0) return slots;
+  let idx = 0;
+  for (let i = 1; i < slots.length; i++) if (slots[i].end > slots[idx].end) idx = i;
+  if (close <= slots[idx].end) return slots;
+  return slots.map((s, i) => (i === idx ? { ...s, end: close } : s));
+}
+
+// ---------------------------------------------------------------------------
 // Analyse principale
 // ---------------------------------------------------------------------------
 
 /** Lignes d'info pratique qui ne sont pas des règles d'horaires */
 const NOISE_RE = /caisse|evacuation|bassin et les plages|jours? feries?/;
 
-export function analyzeDay(page: PageSections, today: TodayInfo): DayStatus {
+export function analyzeDay(
+  page: PageSections,
+  today: TodayInfo,
+  pool?: { slug: string; name?: string }
+): DayStatus {
   const allTexts = [page.intro, ...page.notices];
   const alerts = extractAlerts([...allTexts, ...page.sections.map((s) => s.body)]);
+
+  // Actualités « En bref » concernant cette piscine ce jour-là (affichées même
+  // si la piscine est fermée). `extendTo` = la fermeture la plus tardive qu'une
+  // actu prolonge ; `enBrefClosure` = une fermeture annoncée applicable ce jour.
+  const news = collectPoolNews(page.shorts ?? [], today, pool);
+  const messages = news.map((n) => n.title);
+  const extendTo = news.reduce<string | null>(
+    (max, n) => (n.extendClose && (!max || n.extendClose > max) ? n.extendClose : max),
+    null
+  );
+  const enBrefClosure = news.find((n) => n.closure)?.closure ?? null;
 
   // 1. Fermeture exceptionnelle annoncée hors horaires → prioritaire
   const strongClosure = findStrongClosure(allTexts, today);
@@ -516,6 +658,21 @@ export function analyzeDay(page: PageSections, today: TodayInfo): DayStatus {
       alerts: alerts.filter((a) => a !== strongClosure),
       confidence: "high",
       basins: [],
+      announcements: messages,
+    };
+  }
+
+  // 1 bis. Fermeture annoncée « En bref » concernant cette piscine (saisonnière,
+  // sans lien dans la grille) → fermée, prime sur les horaires publiés.
+  if (enBrefClosure) {
+    return {
+      openToday: false,
+      slotsToday: [],
+      closureReason: enBrefClosure,
+      alerts,
+      confidence: "high",
+      basins: [],
+      announcements: messages,
     };
   }
 
@@ -529,6 +686,7 @@ export function analyzeDay(page: PageSections, today: TodayInfo): DayStatus {
       alerts,
       confidence: "low",
       basins: [],
+      announcements: messages,
     };
   }
 
@@ -574,6 +732,7 @@ export function analyzeDay(page: PageSections, today: TodayInfo): DayStatus {
       alerts,
       confidence: "high",
       basins: [],
+      announcements: messages,
     };
   }
 
@@ -730,6 +889,7 @@ export function analyzeDay(page: PageSections, today: TodayInfo): DayStatus {
       alerts,
       confidence: "low",
       basins: [],
+      announcements: messages,
     };
   }
 
@@ -767,6 +927,12 @@ export function analyzeDay(page: PageSections, today: TodayInfo): DayStatus {
     }
   }
 
+  // Extension d'horaire annoncée « En bref » (canicule) : repousse la fermeture
+  // du jour. N'ouvre jamais un bassin fermé (extendClosing ignore les vides).
+  if (extendTo) {
+    for (const b of basins) b.slots = extendClosing(b.slots, extendTo);
+  }
+
   const union = mergeSlots(basins.flatMap((b) => b.slots));
 
   if (union.length === 0) {
@@ -779,8 +945,17 @@ export function analyzeDay(page: PageSections, today: TodayInfo): DayStatus {
       alerts,
       confidence,
       basins,
+      announcements: messages,
     };
   }
 
-  return { openToday: true, slotsToday: union, closureReason: null, alerts, confidence, basins };
+  return {
+    openToday: true,
+    slotsToday: union,
+    closureReason: null,
+    alerts,
+    confidence,
+    basins,
+    announcements: messages,
+  };
 }

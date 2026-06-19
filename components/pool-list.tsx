@@ -9,10 +9,26 @@ import { poolDirectionsUrl } from "@/lib/pools";
 const DAY_LINE_RE = /^(?:du|le)?\s*(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b/i;
 
 /**
+ * Étiquette de sous-grille (« Horaires habituels en période scolaire »,
+ * « Horaires exceptionnels vague de chaleur… ») insérée en texte simple au
+ * milieu d'une section : on la traite comme un sous-titre pour séparer
+ * lisiblement les deux grilles d'une même section.
+ */
+function isScheduleSubLabel(line: SectionLine): boolean {
+  if (line.kind !== "text") return false;
+  const t = line.text.toLowerCase();
+  return (
+    /^horaires?\b/.test(t) &&
+    !/\d{1,2}\s*h/.test(t) && // pas d'heures → étiquette, pas une règle
+    /habituel|exceptionnel|scolaire|vacances|été|hiver|chaleur|canicule|période|estival/.test(t)
+  );
+}
+
+/**
  * Réordonne l'affichage d'une section : dans chaque sous-bloc (délimité par
- * les sous-titres), les lignes par jour restent groupées et les notes en
- * prose (« Le petit bassin est fermé… ») passent après — la mairie les
- * insère parfois au milieu de la grille.
+ * les sous-titres et les étiquettes de sous-grille), les lignes par jour
+ * restent groupées et les notes en prose (« Le petit bassin est fermé… »)
+ * passent après — la mairie les insère parfois au milieu de la grille.
  */
 function orderLines(lines: SectionLine[]): SectionLine[] {
   const out: SectionLine[] = [];
@@ -25,9 +41,11 @@ function orderLines(lines: SectionLine[]): SectionLine[] {
     notes = [];
   };
   for (const line of lines) {
-    if (line.kind === "heading") {
+    if (line.kind === "heading" || isScheduleSubLabel(line)) {
       flush();
-      out.push(line);
+      // Une étiquette en texte simple est promue en sous-titre pour rester
+      // à sa place et distinguer les deux grilles.
+      out.push(line.kind === "heading" ? line : { kind: "heading", text: line.text });
     } else if (DAY_LINE_RE.test(line.text)) {
       dayLines.push(line);
     } else {
@@ -152,6 +170,9 @@ function PoolCard({
 }) {
   const state = liveState(pool, now);
   const day = pool.week?.[0];
+  // Bandeaux « En bref » à afficher : on retire celui déjà montré comme raison
+  // de fermeture (sinon doublon avec le message « Fermée »).
+  const banners = day?.announcements?.filter((a) => a !== day.closureReason) ?? [];
 
   return (
     <li className="rounded-2xl bg-white p-4 shadow-md shadow-pink-100/50">
@@ -165,8 +186,8 @@ function PoolCard({
               aria-label={isFavorite ? "Retirer des favoris" : "Suivre cette piscine"}
               title={
                 isFavorite
-                  ? "Suivie — alertes de fermeture activées pour cette piscine"
-                  : "Suivre pour être alerté·e des fermetures"
+                  ? "Suivie — alertes activées pour cette piscine"
+                  : "Suivre pour être alerté·e (fermetures, changements d'horaires…)"
               }
               className={`-ml-0.5 shrink-0 text-lg leading-none transition-colors ${
                 isFavorite ? "text-amber-400" : "text-slate-300 hover:text-amber-300"
@@ -187,11 +208,14 @@ function PoolCard({
             href={poolDirectionsUrl(pool)}
             target="_blank"
             rel="noreferrer"
-            aria-label={`Itinéraire vers la piscine ${pool.name}`}
-            title="Itinéraire — ouvre votre app de navigation"
-            className="mt-0.5 shrink-0 text-base leading-none text-slate-400 transition-colors hover:text-fuchsia-700"
+            aria-label={`Itinéraire vers la piscine ${pool.name} (Google Maps)`}
+            title="Itinéraire — ouvre Google Maps"
+            className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[#1a73e8] text-white shadow-sm transition-colors hover:bg-[#1557b0]"
           >
-            📍
+            {/* Flèche « Itinéraire » de Google Maps (icône Material near_me) */}
+            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-current">
+              <path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z" />
+            </svg>
           </a>
         </div>
         <Badge state={state} />
@@ -246,6 +270,16 @@ function PoolCard({
 
       {state.kind === "closed" && state.reason && (
         <p className="mt-2 text-sm text-slate-600">{state.reason}</p>
+      )}
+
+      {banners.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {banners.map((a) => (
+            <li key={a} className="text-xs font-medium text-sky-800">
+              📢 {a}
+            </li>
+          ))}
+        </ul>
       )}
 
       {day && day.alerts.length > 0 && (

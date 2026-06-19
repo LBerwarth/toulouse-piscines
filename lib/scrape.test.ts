@@ -60,6 +60,44 @@ describe("parsePoolPage", () => {
     ]);
   });
 
+  it("lit le bloc « En bref » et les extensions d'horaires par piscine", () => {
+    // Structure réelle du bloc actualités (canicule du 18/06/2026)
+    const html = `
+      <html><body>
+        <div class="block__shorts">
+          <h2>En bref</h2>
+          <ul class="block__shorts__list">
+            <li class="block__shorts__list-item paragraph">
+              <div class="title">
+                <time datetime="2026-06-18">18/06/2026</time> - <h3>Canicule : mesures exceptionnelles</h3>
+              </div>
+              <div class="text-formatted">
+                <p>Mesures exceptionnelles à compter du vendredi 19 juin :</p>
+                <div><ul>
+                  <li>Tarif unique : 1 €</li>
+                  <li>Extension des horaires :<br>
+                    <a href="https://metropole.toulouse.fr/annuaire/piscine-chapou-ete">Piscine Chapou</a> : ouverture jusqu'à 20h<br>
+                    <a href="https://metropole.toulouse.fr/annuaire/piscine-alfred-nakache-ete">Piscine Nakache été</a> : ouverture jusqu'à 20h30</li>
+                </ul></div>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </body></html>`;
+
+    const result = parsePoolPage(html);
+    expect(result.shorts).toHaveLength(1);
+    const s = result.shorts[0];
+    expect(s.date).toBe("2026-06-18");
+    expect(s.title).toBe("Canicule : mesures exceptionnelles");
+    expect(s.text).toMatch(/à compter du vendredi 19 juin/);
+    expect(s.pools).toContainEqual({
+      slug: "piscine-chapou-ete",
+      after: ": ouverture jusqu'à 20h",
+    });
+    expect(s.pools.find((p) => p.slug === "piscine-alfred-nakache-ete")?.after).toMatch(/20h30/);
+  });
+
   it("sépare les jours collés par des <br> dans un même paragraphe", () => {
     const html = `
       <html><body>

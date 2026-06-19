@@ -28,17 +28,22 @@ for (const pool of POOLS) {
     if (filter) {
       console.log(`  intro: ${page.intro.slice(0, 300)}`);
       for (const n of page.notices) console.log(`  notice: ${n.slice(0, 200)}`);
+      for (const s of page.shorts) {
+        console.log(`  en bref [${s.date ?? "?"}]: ${s.title}`);
+        for (const p of s.pools) console.log(`    → ${p.slug}: ${p.after.slice(0, 60)}`);
+      }
       for (const s of page.sections) {
         console.log(`  section « ${s.title} »`);
         for (const l of s.lines) console.log(`    [${l.kind}] ${l.text.slice(0, 120)}`);
       }
     }
     for (const day of week) {
-      const st = analyzeDay(page, day);
+      const st = analyzeDay(page, day, pool);
       const slots = st.slotsToday.map((s) => `${s.start}-${s.end}`).join(" ");
       const flags = [
         st.confidence === "low" ? "CONFIANCE FAIBLE" : "",
         st.alerts.length ? `alertes:${st.alerts.length}` : "",
+        st.announcements.length ? `en bref:${st.announcements.length}` : "",
       ]
         .filter(Boolean)
         .join(" ");
@@ -60,6 +65,9 @@ for (const pool of POOLS) {
       );
       if (st.alerts.length && day === week[0]) {
         for (const a of st.alerts) console.log(`    ⚠ ${a.slice(0, 150)}`);
+      }
+      if (st.announcements.length && day === week[0]) {
+        for (const a of st.announcements) console.log(`    📢 ${a.slice(0, 150)}`);
       }
     }
   } catch (err) {
