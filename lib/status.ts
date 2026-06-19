@@ -38,6 +38,8 @@ export interface WeekDayRef {
 
 export interface StatusReport {
   updatedAt: string;
+  /** Version du schéma des données mises en cache (cf. CACHE_SCHEMA_VERSION). */
+  version: number;
   /** Les 7 prochains jours ([0] = aujourd'hui), index communs à PoolStatus.week */
   days: WeekDayRef[];
   pools: PoolStatus[];
@@ -71,12 +73,21 @@ async function getPoolStatus(pool: Pool, week: TodayInfo[], fresh: boolean): Pro
  *  des fermetures par la mairie). */
 const TTL_MS = 1800_000; // 30 min
 
+/**
+ * Version du schéma du rapport mis en cache. À incrémenter dès que la forme des
+ * données change (ex. `announcements: string[]` → `{ title, detail }[]`). Un blob
+ * d'une autre version est ignoré : on évite ainsi qu'un déploiement (ou une autre
+ * instance partageant la ligne de cache) ne serve des données d'une forme obsolète.
+ */
+const CACHE_SCHEMA_VERSION = 2;
+
 /** Scrape les 12 pages et construit le rapport. `fresh` force une requête réseau. */
 async function buildReport(fresh: boolean): Promise<StatusReport> {
   const week = await getWeekInfo();
   const pools = await Promise.all(POOLS.map((p) => getPoolStatus(p, week, fresh)));
   return {
     updatedAt: new Date().toISOString(),
+    version: CACHE_SCHEMA_VERSION,
     days: week.map(({ dateKey, weekday }) => ({ dateKey, weekday })),
     pools,
   };
@@ -121,9 +132,15 @@ async function writeCachedReport(report: StatusReport): Promise<void> {
 export async function getStatusReport(): Promise<StatusReport> {
   if (!isConfigured()) return buildReport(false);
 
+  // En développement, on n'utilise jamais le cache partagé : sinon on lit/écrit
+  // la même ligne que la production, qui peut tourner sur un autre schéma — d'où
+  // des données incohérentes des deux côtés. Le rendu local reflète le code local.
+  if (process.env.NODE_ENV !== "production") return buildReport(false);
+
   try {
     const cached = await readCachedReport();
-    if (cached && Date.now() - cached.fetchedAt < TTL_MS) {
+    // Un blob d'une version de schéma différente (ancien déploiement) est ignoré.
+    if (cached && cached.report.version === CACHE_SCHEMA_VERSION && Date.now() - cached.fetchedAt < TTL_MS) {
       return cached.report;
     }
     const fresh = await buildReport(true);

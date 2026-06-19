@@ -28,7 +28,21 @@ export interface DayStatus {
    * Actualités « En bref » concernant cette piscine ce jour-là (canicule,
    * extensions d'horaires…). Affichées en bandeau et poussées en notification.
    */
-  announcements: string[];
+  announcements: Announcement[];
+  /**
+   * Heure de fermeture « HH:MM » repoussée par une actu « En bref » ce jour-là,
+   * lorsqu'elle dépasse réellement l'horaire habituel publié (sinon null). Sert
+   * à signaler, dans la grille publiée, que l'horaire du jour est modifié.
+   */
+  extendedTo?: string | null;
+}
+
+/** Une actualité « En bref » affichée en bandeau : titre + corps détaillé. */
+export interface Announcement {
+  /** Titre de l'actu (h3) — sert aussi de clé pour la notification push */
+  title: string;
+  /** Corps de l'actu (mesures, tarifs, dates…) ou null s'il est vide */
+  detail: string | null;
 }
 
 const DAY_NAMES = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
@@ -347,7 +361,9 @@ export function exceptionalSignature(day: DayStatus): string | null {
   for (const alert of day.alerts) if (EXCEPTIONAL_RE.test(alert)) parts.push(alert);
   // Les actualités « En bref » concernant la piscine (canicule, extensions…)
   // sont par nature notifiables — elles ne passent pas par EXCEPTIONAL_RE.
-  for (const a of day.announcements ?? []) parts.push(a);
+  // La signature reste fondée sur le titre : changer le corps de l'actu ne
+  // doit pas re-déclencher une notification déjà envoyée.
+  for (const a of day.announcements ?? []) parts.push(a.title);
   if (parts.length === 0) return null;
   return [...new Set(parts)].join(" | ").slice(0, 300);
 }
@@ -529,10 +545,19 @@ export function subtractSlots(slots: TimeSlot[], closed: TimeSlot[]): TimeSlot[]
 interface PoolNews {
   /** Titre de l'actu — affiché en bandeau et poussé en notification */
   title: string;
+  /** Corps de l'actu (mesures, tarifs, dates d'application…) ou null si vide */
+  detail: string | null;
   /** Heure de fermeture « HH:MM » si l'actu prolonge l'ouverture, sinon null */
   extendClose: string | null;
   /** Raison de fermeture si l'actu ferme la piscine et s'applique aujourd'hui */
   closure: string | null;
+}
+
+/** Corps d'actu affichable : non vide, distinct du titre, borné en longueur. */
+function newsDetail(news: ShortNews): string | null {
+  const text = news.text.trim();
+  if (!text || norm(text) === norm(news.title)) return null;
+  return text.length > 600 ? `${text.slice(0, 599).trimEnd()}…` : text;
 }
 
 /**
@@ -595,7 +620,7 @@ function collectPoolNews(
       // pour la vue semaine et pour ne pas afficher une fermeture future/passée).
       const range = closureRange(news.text, today.year) ?? closureRange(news.title, today.year);
       if (range && (today.dateKey < range.from || today.dateKey > range.to)) continue;
-      out.push({ title: news.title, extendClose: null, closure: news.title });
+      out.push({ title: news.title, detail: newsDetail(news), extendClose: null, closure: news.title });
       continue;
     }
 
@@ -605,6 +630,7 @@ function collectPoolNews(
     if (range && (today.dateKey < range.from || today.dateKey > range.to)) continue;
     out.push({
       title: news.title,
+      detail: newsDetail(news),
       extendClose: linked ? parseExtensionClose(linked.after) : null,
       closure: null,
     });
@@ -640,7 +666,7 @@ export function analyzeDay(
   // si la piscine est fermée). `extendTo` = la fermeture la plus tardive qu'une
   // actu prolonge ; `enBrefClosure` = une fermeture annoncée applicable ce jour.
   const news = collectPoolNews(page.shorts ?? [], today, pool);
-  const messages = news.map((n) => n.title);
+  const messages: Announcement[] = news.map((n) => ({ title: n.title, detail: n.detail }));
   const extendTo = news.reduce<string | null>(
     (max, n) => (n.extendClose && (!max || n.extendClose > max) ? n.extendClose : max),
     null
@@ -929,8 +955,14 @@ export function analyzeDay(
 
   // Extension d'horaire annoncée « En bref » (canicule) : repousse la fermeture
   // du jour. N'ouvre jamais un bassin fermé (extendClosing ignore les vides).
+  // `extendedTo` n'est renseigné que si l'extension dépasse vraiment l'horaire
+  // publié (sinon elle est sans effet, ex. week-end déjà ouvert plus tard).
+  const latestClose = () => basins.reduce((m, b) => b.slots.reduce((mm, s) => (s.end > mm ? s.end : mm), m), "");
+  let extendedTo: string | null = null;
   if (extendTo) {
+    const before = latestClose();
     for (const b of basins) b.slots = extendClosing(b.slots, extendTo);
+    if (latestClose() > before) extendedTo = extendTo;
   }
 
   const union = mergeSlots(basins.flatMap((b) => b.slots));
@@ -957,5 +989,6 @@ export function analyzeDay(
     confidence,
     basins,
     announcements: messages,
+    extendedTo,
   };
 }

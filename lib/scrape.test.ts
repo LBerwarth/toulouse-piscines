@@ -91,6 +91,10 @@ describe("parsePoolPage", () => {
     expect(s.date).toBe("2026-06-18");
     expect(s.title).toBe("Canicule : mesures exceptionnelles");
     expect(s.text).toMatch(/à compter du vendredi 19 juin/);
+    // Les blocs (p / li / <br>) sont séparés par des sauts de ligne, pas collés
+    expect(s.text).toMatch(/19 juin :\nTarif unique/);
+    expect(s.text).not.toMatch(/juin :Tarif/);
+    expect(s.text).toMatch(/20h\nPiscine Nakache été/);
     expect(s.pools).toContainEqual({
       slug: "piscine-chapou-ete",
       after: ": ouverture jusqu'à 20h",

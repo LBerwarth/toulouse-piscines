@@ -172,7 +172,7 @@ function PoolCard({
   const day = pool.week?.[0];
   // Bandeaux « En bref » à afficher : on retire celui déjà montré comme raison
   // de fermeture (sinon doublon avec le message « Fermée »).
-  const banners = day?.announcements?.filter((a) => a !== day.closureReason) ?? [];
+  const banners = day?.announcements?.filter((a) => a.title !== day.closureReason) ?? [];
 
   return (
     <li className="rounded-2xl bg-white p-4 shadow-md shadow-pink-100/50">
@@ -273,10 +273,13 @@ function PoolCard({
       )}
 
       {banners.length > 0 && (
-        <ul className="mt-2 space-y-1">
+        <ul className="mt-2 space-y-1.5">
           {banners.map((a) => (
-            <li key={a} className="text-xs font-medium text-sky-800">
-              📢 {a}
+            <li key={a.title} className="text-xs text-sky-800">
+              <span className="font-medium">📢 {a.title}</span>
+              {a.detail && (
+                <span className="mt-0.5 block whitespace-pre-line text-sky-700/90">{a.detail}</span>
+              )}
             </li>
           ))}
         </ul>
@@ -304,6 +307,13 @@ function PoolCard({
             Voir les infos publiées
           </summary>
           <div className="mt-2 space-y-2 text-xs text-slate-600">
+            {day?.extendedTo && (
+              <p className="rounded-lg bg-sky-50 px-2.5 py-1.5 text-sky-800">
+                ⏱️ Aujourd&apos;hui, la fermeture est exceptionnellement repoussée à{" "}
+                {day.extendedTo} (voir l&apos;actu 📢 ci-dessus). La grille ci-dessous reprend les
+                horaires habituels publiés par la mairie.
+              </p>
+            )}
             {pool.raw.intro && <p>{pool.raw.intro}</p>}
             {pool.raw.notices.map((n) => (
               <p key={n} className="text-amber-800">

@@ -67,7 +67,10 @@ for (const pool of POOLS) {
         for (const a of st.alerts) console.log(`    ⚠ ${a.slice(0, 150)}`);
       }
       if (st.announcements.length && day === week[0]) {
-        for (const a of st.announcements) console.log(`    📢 ${a.slice(0, 150)}`);
+        for (const a of st.announcements) {
+          console.log(`    📢 ${a.title.slice(0, 150)}`);
+          if (a.detail) console.log(`       ${a.detail.slice(0, 150)}`);
+        }
       }
     }
   } catch (err) {

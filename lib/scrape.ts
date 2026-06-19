@@ -99,6 +99,24 @@ export function parsePoolPage(html: string): PageSections {
     return lines;
   };
 
+  /**
+   * Texte d'un conteneur en préservant les sauts de ligne entre blocs (p / li /
+   * <br>). Contrairement à un simple .text() qui collerait « …19 juin :Tarif »,
+   * on insère un \n après chaque bloc puis on normalise les espaces sans toucher
+   * aux retours à la ligne. On clone pour ne pas altérer l'arbre (réutilisé
+   * ensuite pour extraire les liens /annuaire/).
+   */
+  const blockText = (el: ReturnType<typeof $>): string => {
+    const clone = el.clone();
+    clone.find("p, li").append("\n");
+    return clone
+      .text()
+      .replace(/[^\S\n]+/g, " ")
+      .replace(/ *\n */g, "\n")
+      .replace(/\n{2,}/g, "\n")
+      .trim();
+  };
+
   // La mairie sépare souvent les jours par des <br> dans un seul paragraphe
   // (« Lundi : 12h - 14h<br>Mardi : fermé… ») : on en fait de vraies lignes.
   $("br").replaceWith("\n");
@@ -152,8 +170,10 @@ export function parsePoolPage(html: string): PageSections {
     const item = $(el);
     const date = item.find("time").first().attr("datetime") ?? null;
     const title = clean(item.find(".title h3, h3").first().text());
+    // Corps de l'actu en préservant les sauts de ligne (sinon les blocs se
+    // collent : « …19 juin :Tarif unique… », « …20h30Ces dispositions… »).
     const bodyEl = item.find(".text-formatted").first();
-    const text = clean((bodyEl.length > 0 ? bodyEl : item).text());
+    const text = bodyEl.length > 0 ? blockText(bodyEl) : clean(item.text());
     if (!title && !text) return;
 
     const pools: { slug: string; after: string }[] = [];

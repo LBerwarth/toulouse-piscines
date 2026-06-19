@@ -400,11 +400,14 @@ describe("analyzeDay — cas réels", () => {
   const caniculeShort: ShortNews = {
     date: "2026-06-18",
     title: "Canicule : mesures exceptionnelles dans les piscines municipales",
+    // Corps tel que le scraper le produit désormais : une ligne par bloc (\n).
     text:
       "En raison du passage en alerte canicule (niveau orange), des mesures exceptionnelles " +
-      "sont mises en place dans les piscines municipales à compter du vendredi 19 juin : " +
-      "Tarif unique : 1 € l'entrée dans toutes les piscines Extension des horaires : " +
-      "Piscine Chapou : ouverture jusqu'à 20h Piscine Nakache été : ouverture jusqu'à 20h30 " +
+      "sont mises en place dans les piscines municipales à compter du vendredi 19 juin :\n" +
+      "Tarif unique : 1 € l'entrée dans toutes les piscines\n" +
+      "Extension des horaires :\n" +
+      "Piscine Chapou : ouverture jusqu'à 20h\n" +
+      "Piscine Nakache été : ouverture jusqu'à 20h30\n" +
       "Ces dispositions sont applicables jusqu'à la levée de l'alerte canicule.",
     pools: [
       { slug: "piscine-chapou-ete", after: ": ouverture jusqu'à 20h" },
@@ -417,9 +420,13 @@ describe("analyzeDay — cas réels", () => {
     // Vendredi 19 juin : la grille dit 12h-19h, l'actu prolonge jusqu'à 20h
     const r = analyzeDay(p, today(20260619, 4), { slug: "piscine-chapou-ete" });
     expect(r.slotsToday).toEqual([{ start: "12:00", end: "20:00" }]);
-    expect(r.announcements).toContain(
+    expect(r.announcements.map((a) => a.title)).toContain(
       "Canicule : mesures exceptionnelles dans les piscines municipales"
     );
+    // …et le corps de l'actu (mesures, tarif 1 €, horaires) est conservé pour l'affichage
+    expect(r.announcements[0].detail).toMatch(/1\s*€[\s\S]*20h30/);
+    // …et la fermeture du jour, réellement repoussée (19h → 20h), est signalée
+    expect(r.extendedTo).toBe("20:00");
   });
 
   it("Chapou : l'extension ne s'applique pas avant sa date de début", () => {
@@ -435,8 +442,10 @@ describe("analyzeDay — cas réels", () => {
     const p = { ...castex, shorts: [caniculeShort] };
     const ven = analyzeDay(p, today(20260619, 4), { slug: "piscine-alfred-nakache-ete" });
     expect(ven.slotsToday).toEqual([{ start: "12:00", end: "20:30" }]);
+    expect(ven.extendedTo).toBe("20:30"); // semaine : 19h → 20h30, repoussée
     const sam = analyzeDay(p, today(20260620, 5), { slug: "piscine-alfred-nakache-ete" });
     expect(sam.slotsToday).toEqual([{ start: "09:30", end: "20:30" }]);
+    expect(sam.extendedTo).toBeNull(); // week-end déjà 20h30 : extension sans effet
   });
 
   it("piscine non citée par l'actu « En bref » → ni extension ni annonce", () => {
