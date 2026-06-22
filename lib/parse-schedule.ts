@@ -78,6 +78,12 @@ function fmt(h: number, m: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+/** « 21:00 » → « 21h », « 20:30 » → « 20h30 » (libellé d'annonce lisible). */
+function closeLabel(hhmm: string): string {
+  const [h, m] = hhmm.split(":");
+  return m === "00" ? `${Number(h)}h` : `${Number(h)}h${m}`;
+}
+
 export function parseTimeRanges(line: string): TimeSlot[] {
   const t = norm(line);
   const re = /(\d{1,2})\s*h\s*([0-5]\d)?\s*(?:a|-|–|—)\s*(\d{1,2})\s*h\s*([0-5]\d)?/g;
@@ -577,6 +583,24 @@ function parseExtensionClose(after: string): string | null {
 }
 
 /**
+ * Heure de fermeture d'une règle conditionnelle « canicule » d'une grille
+ * d'horaires (« En cas d'alerte orange canicule, fermeture à 21h » → "21:00").
+ * Renvoie null si la ligne ne parle pas de canicule ou n'annonce pas d'heure
+ * absolue introduite par « à »/« jusqu'à » — ainsi « fermeture retardée d'1h »
+ * (relative, non résoluble sans l'horaire de base) est ignorée.
+ */
+function parseCaniculeClose(line: string): string | null {
+  const t = norm(line);
+  if (!/canicule|forte chaleur|vague de chaleur/.test(t)) return null;
+  const m = t.match(/(?:\ba|jusqu'?a)\s+(\d{1,2})\s*h\s*([0-5]\d)?/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2] ?? 0);
+  if (h > 24) return null;
+  return fmt(h, min);
+}
+
+/**
  * Plage d'application d'une fermeture annoncée. « jusqu'au 14 juin » / « du X
  * au Y » → plage explicite ; une date seule (« le 5 juin ») vaut un jour
  * unique, SAUF si le texte décrit une fermeture durable (« pour la saison
@@ -636,6 +660,25 @@ function collectPoolNews(
     });
   }
   return out;
+}
+
+/**
+ * Vrai si le bloc « En bref » signale un épisode de canicule en cours
+ * aujourd'hui. La mairie y publie « Canicule : mesures exceptionnelles… »
+ * pendant l'alerte et retire l'actu à la levée — sa présence (et sa plage
+ * d'application) fait foi. Sert de garde-fou : une règle conditionnelle « en
+ * cas d'alerte orange canicule » d'une page n'est honorée que pendant un
+ * épisode réellement déclaré (cf. memory/enbref-announcements).
+ */
+function caniculeEpisodeActive(shorts: ShortNews[], today: TodayInfo): boolean {
+  for (const news of shorts) {
+    const hay = norm(`${news.title} ${news.text}`);
+    if (!/canicule|forte chaleur|vague de chaleur/.test(hay)) continue;
+    const range = parseDateRange(news.text, today.year) ?? parseDateRange(news.title, today.year);
+    if (range && (today.dateKey < range.from || today.dateKey > range.to)) continue;
+    return true;
+  }
+  return false;
 }
 
 /** Repousse la fin du dernier créneau jusqu'à `close` (jamais avant). */
@@ -953,16 +996,48 @@ export function analyzeDay(
     }
   }
 
-  // Extension d'horaire annoncée « En bref » (canicule) : repousse la fermeture
-  // du jour. N'ouvre jamais un bassin fermé (extendClosing ignore les vides).
-  // `extendedTo` n'est renseigné que si l'extension dépasse vraiment l'horaire
-  // publié (sinon elle est sans effet, ex. week-end déjà ouvert plus tard).
+  // Repli « canicule » : quand la mairie a déclaré un épisode dans le bloc « En
+  // bref » et que la grille active porte une règle conditionnelle (« En cas
+  // d'alerte orange canicule, fermeture à 21h »), on honore cette fermeture
+  // prolongée — la page ne le signalant pas autrement. On ne lit que les règles
+  // du bloc actif aujourd'hui : le repli est donc borné à la période concernée
+  // (la règle 21h vit dans la grille estivale, pas la scolaire — inerte hors été).
+  let caniculeClose: string | null = null;
+  let caniculeRule: string | null = null;
+  if (caniculeEpisodeActive(page.shorts ?? [], today)) {
+    for (const rule of selected.rules) {
+      const close = parseCaniculeClose(rule);
+      if (close && (!caniculeClose || close > caniculeClose)) {
+        caniculeClose = close;
+        caniculeRule = rule;
+      }
+    }
+  }
+
+  // Extension d'horaire : repousse la fermeture du jour à la plus tardive entre
+  // l'actu « En bref » liée à la piscine (extendTo) et la règle conditionnelle
+  // canicule du bloc actif (caniculeClose). N'ouvre jamais un bassin fermé
+  // (extendClosing ignore les vides). `extendedTo` n'est renseigné que si
+  // l'extension dépasse vraiment l'horaire publié (sinon elle est sans effet,
+  // ex. week-end déjà ouvert plus tard).
+  const target =
+    [extendTo, caniculeClose].filter((t): t is string => t !== null).sort().at(-1) ?? null;
   const latestClose = () => basins.reduce((m, b) => b.slots.reduce((mm, s) => (s.end > mm ? s.end : mm), m), "");
   let extendedTo: string | null = null;
-  if (extendTo) {
+  if (target) {
     const before = latestClose();
-    for (const b of basins) b.slots = extendClosing(b.slots, extendTo);
-    if (latestClose() > before) extendedTo = extendTo;
+    for (const b of basins) b.slots = extendClosing(b.slots, target);
+    if (latestClose() > before) extendedTo = target;
+  }
+
+  // Si c'est le repli canicule qui a réellement repoussé la fermeture (au-delà
+  // de toute actu « En bref » liée), on l'explique par un bandeau dédié,
+  // notifiable comme les autres annonces (cf. exceptionalSignature).
+  if (caniculeClose && extendedTo === caniculeClose && (extendTo === null || caniculeClose > extendTo)) {
+    messages.push({
+      title: `Canicule : fermeture prolongée à ${closeLabel(caniculeClose)}`,
+      detail: caniculeRule,
+    });
   }
 
   const union = mergeSlots(basins.flatMap((b) => b.slots));

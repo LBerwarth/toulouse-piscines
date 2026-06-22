@@ -688,6 +688,75 @@ describe("analyzeDay — cas réels", () => {
     expect(vendredi.basins.filter((b) => /petit/i.test(b.label ?? ""))).toHaveLength(1);
   });
 
+  // Reproduit la grille Alex Jany : bloc estival daté portant la règle
+  // conditionnelle « En cas d'alerte orange canicule, fermeture à 21h », que la
+  // page ne traduit pas en horaire ailleurs.
+  const alexJanyEte = page([
+    {
+      title: "Horaires en période scolaire",
+      lines: [text("Lundi : 7h - 9h / 12h - 14h / 16h - 19h"), text("Samedi : 15h - 19h")],
+    },
+    {
+      title: "Horaires d'été à compter du 4 juillet 2026",
+      lines: [
+        heading("Du 4 juillet au 23 août"),
+        text("De 10h à 20h"),
+        text("En cas d'alerte orange canicule, fermeture à 21h"),
+      ],
+    },
+  ]);
+  const alexJany = { slug: "piscine-alex-jany", name: "Alex Jany" };
+
+  it("Alex Jany : été hors canicule → 10h-20h (la règle conditionnelle reste inerte)", () => {
+    const r = analyzeDay(alexJanyEte, today(20260704, 5, true), alexJany);
+    expect(r.slotsToday).toEqual([{ start: "10:00", end: "20:00" }]);
+    expect(r.extendedTo ?? null).toBeNull();
+    expect(r.announcements).toEqual([]);
+  });
+
+  it("Alex Jany : été + canicule déclarée « En bref » (sans la citer) → fermeture repoussée à 21h", () => {
+    const p = { ...alexJanyEte, shorts: [caniculeShort] };
+    const r = analyzeDay(p, today(20260704, 5, true), alexJany);
+    expect(r.slotsToday).toEqual([{ start: "10:00", end: "21:00" }]);
+    expect(r.extendedTo).toBe("21:00");
+    // bandeau dédié — la piscine n'étant pas citée par l'actu globale — et notifiable
+    expect(r.announcements.map((a) => a.title)).toContain("Canicule : fermeture prolongée à 21h");
+    expect(exceptionalSignature(r)).toMatch(/fermeture prolongée à 21h/);
+  });
+
+  it("Alex Jany : canicule mais période scolaire → la règle estivale ne s'applique pas (reste 19h)", () => {
+    const p = { ...alexJanyEte, shorts: [caniculeShort] };
+    // Lundi 22 juin : bloc scolaire actif, sans règle canicule → ferme 19h
+    const r = analyzeDay(p, today(20260622, 0, false), alexJany);
+    expect(r.slotsToday).toEqual([
+      { start: "07:00", end: "09:00" },
+      { start: "12:00", end: "14:00" },
+      { start: "16:00", end: "19:00" },
+    ]);
+    expect(r.extendedTo ?? null).toBeNull();
+    expect(r.announcements.map((a) => a.title)).not.toContain("Canicule : fermeture prolongée à 21h");
+  });
+
+  it("règle canicule RELATIVE (« retardée d'1h ») non résoluble → pas d'extension même en canicule", () => {
+    const p = page(
+      [
+        {
+          title: "Horaires d'été à compter du 4 juillet 2026",
+          lines: [
+            text("Tous les jours de 10h à 20h"),
+            text("En cas d'alerte orange canicule, fermeture retardée d'1h"),
+          ],
+        },
+      ],
+      "",
+      [],
+      [caniculeShort]
+    );
+    const r = analyzeDay(p, today(20260704, 5, true), { slug: "piscine-x", name: "X" });
+    expect(r.slotsToday).toEqual([{ start: "10:00", end: "20:00" }]);
+    expect(r.extendedTo ?? null).toBeNull();
+  });
+
   it("fermeture exceptionnelle à date unique « le samedi 20 juin » → fermée ce jour-là seulement", () => {
     const p = page(
       [{ title: "Horaires", lines: [text("Tous les jours de 10h à 20h")] }],
