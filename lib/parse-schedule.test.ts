@@ -109,6 +109,20 @@ describe("parseDateRange", () => {
       to: 99999999,
     });
   });
+
+  it("tolère un jour de semaine dans « du … au … » (« du lundi 29 juin au vendredi 3 juillet »)", () => {
+    expect(parseDateRange("fermée du lundi 29 juin au vendredi 3 juillet inclus", 2026)).toEqual({
+      from: 20260629,
+      to: 20260703,
+    });
+  });
+
+  it("tolère un jour de semaine dans « du … au … » à mois partagé (« du lundi 24 au jeudi 27 août »)", () => {
+    expect(parseDateRange("du lundi 24 au jeudi 27 août", 2026)).toEqual({
+      from: 20260824,
+      to: 20260827,
+    });
+  });
 });
 
 describe("analyzeDay — cas réels", () => {
@@ -484,6 +498,61 @@ describe("analyzeDay — cas réels", () => {
     // Une piscine non citée par cette actu n'est pas fermée
     const autre = analyzeDay(p, today(20260619, 4), { slug: "piscine-papus", name: "Papus" });
     expect(autre.openToday).toBe(true);
+  });
+
+  it("Nakache hiver : fermeture « saison estivale » nommée sans le suffixe → fermée (nom de base)", () => {
+    // La mairie écrit « Alfred Nakache », sans le « hiver » du nom de la piscine.
+    const nakacheClosure: ShortNews = {
+      date: "2026-05-22",
+      title: "Fermeture de la piscine Alfred Nakache pour la saison estivale",
+      text: "La piscine Alfred Nakache est actuellement fermée au public pour la saison estivale.",
+      pools: [], // citée par son nom seul, sans lien /annuaire/ ni suffixe « hiver »
+    };
+    const p = page(
+      [{ title: "Horaires", lines: [text("Du lundi au vendredi : 7h - 14h")] }],
+      "",
+      [],
+      [nakacheClosure]
+    );
+    // La piscine d'HIVER (fermée l'été) est bien fermée malgré le suffixe absent.
+    const hiver = analyzeDay(p, today(20260623, 1), {
+      slug: "piscine-alfred-nakache-hiver",
+      name: "Alfred Nakache hiver",
+    });
+    expect(hiver.openToday).toBe(false);
+    expect(hiver.closureReason).toMatch(/saison estivale/i);
+    expect(hiver.confidence).toBe("high");
+
+    // …mais la piscine d'ÉTÉ (qui FONCTIONNE l'été) ne doit pas être fermée par
+    // cette même actu « saison estivale », même nom de base.
+    const ete = analyzeDay(p, today(20260623, 1), {
+      slug: "piscine-alfred-nakache-ete",
+      name: "Alfred Nakache été",
+    });
+    expect(ete.openToday).toBe(true);
+  });
+
+  it("Yvonne Godard : fermeture « En bref » datée « du lundi … au vendredi … » → fermée seulement dans la plage", () => {
+    const godardClosure: ShortNews = {
+      date: "2026-06-20",
+      title: "Fermeture de la piscine Yvonne Godard du lundi 29 juin au vendredi 3 juillet inclus",
+      text: "En raison de travaux, la piscine Yvonne Godard sera fermée au public du lundi 29 juin au vendredi 3 juillet inclus.",
+      pools: [],
+    };
+    const p = page(
+      [{ title: "Horaires", lines: [text("Du lundi au vendredi : 7h - 19h")] }],
+      "",
+      [],
+      [godardClosure]
+    );
+    const pool = { slug: "piscine-yvonne-godard", name: "Yvonne Godard" };
+    // Avant la plage (mardi 23 juin) : la piscine reste ouverte.
+    const avant = analyzeDay(p, today(20260623, 1), pool);
+    expect(avant.openToday).toBe(true);
+    // Pendant la plage (lundi 29 juin) : fermée pour travaux.
+    const pendant = analyzeDay(p, today(20260629, 0), pool);
+    expect(pendant.openToday).toBe(false);
+    expect(pendant.closureReason).toMatch(/Yvonne Godard/);
   });
 
   it("sans slug (appel historique) → l'actu « En bref » est ignorée", () => {

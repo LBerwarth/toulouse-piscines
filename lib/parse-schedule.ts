@@ -156,11 +156,14 @@ function dateKey(year: number, monthIdx: number, day: number): number {
 
 export function parseDateRange(text: string, refYear: number): DateRange | null {
   const t = norm(text);
+  // Jour de semaine optionnel devant une date (« du lundi 29 juin au vendredi
+  // 3 juillet »). Groupe non capturant : les index des captures sont inchangés.
+  const wd = `(?:(?:${DAY_NAMES.join("|")})\\s+)?`;
 
-  // du 5 juin (2026)? au 5 juillet (2026)?
+  // du (lundi)? 5 juin (2026)? au (vendredi)? 5 juillet (2026)?
   let m = t.match(
     new RegExp(
-      `du\\s+(\\d{1,2})(?:er)?\\s+(${MONTH_RE})\\s*(\\d{4})?\\s+au\\s+(\\d{1,2})(?:er)?\\s+(${MONTH_RE})\\s*(\\d{4})?`
+      `du\\s+${wd}(\\d{1,2})(?:er)?\\s+(${MONTH_RE})\\s*(\\d{4})?\\s+au\\s+${wd}(\\d{1,2})(?:er)?\\s+(${MONTH_RE})\\s*(\\d{4})?`
     )
   );
   if (m) {
@@ -176,9 +179,9 @@ export function parseDateRange(text: string, refYear: number): DateRange | null 
     return { from, to };
   }
 
-  // du 24 au 30 août (2026)? — mois partagé
+  // du (lundi)? 24 au (mercredi)? 30 août (2026)? — mois partagé
   m = t.match(
-    new RegExp(`du\\s+(\\d{1,2})(?:er)?\\s+au\\s+(\\d{1,2})(?:er)?\\s+(${MONTH_RE})\\s*(\\d{4})?`)
+    new RegExp(`du\\s+${wd}(\\d{1,2})(?:er)?\\s+au\\s+${wd}(\\d{1,2})(?:er)?\\s+(${MONTH_RE})\\s*(\\d{4})?`)
   );
   if (m) {
     const y = m[4] ? Number(m[4]) : refYear;
@@ -187,10 +190,7 @@ export function parseDateRange(text: string, refYear: number): DateRange | null 
   }
 
   // à compter du / à partir du / dès le / depuis le 5 juin (2026)? —
-  // éventuellement combiné avec « jusqu'au 30 août (2026)? » dans la même phrase
-  // Jour de semaine optionnel devant la date (« à compter du vendredi 19 juin »).
-  // Groupe non capturant : les index des captures restent inchangés.
-  const wd = `(?:(?:${DAY_NAMES.join("|")})\\s+)?`;
+  // éventuellement combiné avec « jusqu'au 30 août (2026)? » dans la même phrase.
   const fromM = t.match(
     new RegExp(
       `(?:a compter du|a partir du|des le|depuis le)\\s+${wd}(\\d{1,2})(?:er)?\\s+(${MONTH_RE})\\s*(\\d{4})?`
@@ -630,16 +630,27 @@ function collectPoolNews(
   pool: { slug: string; name?: string } | undefined
 ): PoolNews[] {
   if (!pool) return [];
-  const name = pool.name ? norm(pool.name) : "";
+  // Les piscines saisonnières portent un suffixe « été »/« hiver » que la mairie
+  // ne répète pas dans ses actus (« Fermeture de la piscine Alfred Nakache… ») :
+  // on apparie donc sur le nom de base, sans ce suffixe.
+  const fullName = pool.name ? norm(pool.name) : "";
+  const season = /\shiver$/.test(fullName) ? "hiver" : /\sete$/.test(fullName) ? "ete" : null;
+  const name = fullName.replace(/\s(ete|hiver)$/, "");
   const out: PoolNews[] = [];
   for (const news of shorts) {
     if (!news.title) continue;
+    const hay = norm(`${news.title} ${news.text}`);
     const linked = news.pools.find((p) => p.slug === pool.slug);
-    const named = name.length > 0 && norm(`${news.title} ${news.text}`).includes(name);
+    const named = name.length > 0 && hay.includes(name);
     if (!linked && !named) continue;
     if (out.some((n) => n.title === news.title)) continue;
 
-    if (/\bferm/.test(norm(`${news.title} ${news.text}`))) {
+    if (/\bferm/.test(hay)) {
+      // Une fermeture saisonnière ne vise pas la piscine qui FONCTIONNE pendant
+      // cette saison : « pour la saison estivale » ferme la piscine d'hiver
+      // (fermée l'été), pas celle d'été — et inversement.
+      if ((season === "ete" && /estival/.test(hay)) || (season === "hiver" && /hivernal/.test(hay)))
+        continue;
       // Fermeture : ne s'applique qu'aux jours couverts par sa plage (important
       // pour la vue semaine et pour ne pas afficher une fermeture future/passée).
       const range = closureRange(news.text, today.year) ?? closureRange(news.title, today.year);
