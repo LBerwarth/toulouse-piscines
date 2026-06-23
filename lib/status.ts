@@ -121,6 +121,24 @@ async function writeCachedReport(report: StatusReport): Promise<void> {
 }
 
 /**
+ * Repousse le minuteur (`fetched_at`) sans toucher au rapport conservé : utilisé
+ * quand un rescan échoue, pour garder le dernier bon rapport (son `updatedAt`,
+ * donc son âge réel) tout en évitant de re-tenter la source en panne avant TTL.
+ */
+async function touchCacheTimer(fetchedAt: string): Promise<void> {
+  const { error } = await db()
+    .from("status_cache")
+    .update({ fetched_at: fetchedAt })
+    .eq("id", CACHE_ROW_ID);
+  if (error) throw error;
+}
+
+/** Nombre de piscines effectivement récupérées (page lue et analysée). */
+function usablePoolCount(report: StatusReport): number {
+  return report.pools.filter((p) => p.ok && p.week !== null).length;
+}
+
+/**
  * Rapport d'état, mis en cache 30 min dans un magasin partagé (Supabase) avec
  * son horodatage réel de scraping. Ainsi le premier visiteur d'une fenêtre de
  * 30 min déclenche ET voit le rafraîchissement (pas de rechargement manuel), et
@@ -128,6 +146,11 @@ async function writeCachedReport(report: StatusReport): Promise<void> {
  *
  * Sans Supabase (dev local) ou s'il est injoignable : repli sur un scraping
  * direct mis en cache 30 min par le Data Cache de Next.
+ *
+ * Si un rescan échoue totalement (toutes les pages en erreur — typiquement une
+ * maintenance de la source), on NE remplace PAS le cache : on continue de servir
+ * le dernier bon rapport (avec son âge réel), et un bandeau côté client signale
+ * que les horaires peuvent être périmés. L'application reste ainsi utilisable.
  */
 export async function getStatusReport(): Promise<StatusReport> {
   if (!isConfigured()) return buildReport(false);
@@ -140,15 +163,35 @@ export async function getStatusReport(): Promise<StatusReport> {
   try {
     const cached = await readCachedReport();
     // Un blob d'une version de schéma différente (ancien déploiement) est ignoré.
-    if (cached && cached.report.version === CACHE_SCHEMA_VERSION && Date.now() - cached.fetchedAt < TTL_MS) {
-      return cached.report;
+    const lastGood =
+      cached && cached.report.version === CACHE_SCHEMA_VERSION ? cached : null;
+    if (lastGood && Date.now() - lastGood.fetchedAt < TTL_MS) {
+      return lastGood.report;
     }
+
     const fresh = await buildReport(true);
-    try {
-      await writeCachedReport(fresh);
-    } catch {
-      // Écriture du cache best-effort : on renvoie quand même les données fraîches.
+    if (usablePoolCount(fresh) > 0) {
+      try {
+        await writeCachedReport(fresh);
+      } catch {
+        // Écriture du cache best-effort : on renvoie quand même les données fraîches.
+      }
+      return fresh;
     }
+
+    // Échec total du rescan (source indisponible). On conserve le dernier bon
+    // rapport et on repousse la prochaine tentative de TTL_MS (pour ne pas
+    // marteler une source en panne à chaque visite).
+    if (lastGood) {
+      try {
+        await touchCacheTimer(new Date().toISOString());
+      } catch {
+        // best-effort
+      }
+      return lastGood.report;
+    }
+
+    // Aucun bon rapport en cache (premier démarrage) : on renvoie l'échec tel quel.
     return fresh;
   } catch {
     // Supabase injoignable / table absente : on sert des données fraîches sans cache partagé.

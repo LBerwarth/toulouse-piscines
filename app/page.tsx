@@ -1,5 +1,6 @@
 import { getStatusReport } from "@/lib/status";
 import { PoolsView } from "@/components/pools-view";
+import { StaleBanner } from "@/components/stale-banner";
 
 // Rendu dynamique : on relit à chaque visite le cache partagé (Supabase), qui
 // rescanne les pages au plus toutes les 30 min. Le visiteur qui déclenche le
@@ -57,6 +58,8 @@ export default async function Home() {
           />
         </svg>
       </header>
+
+      <StaleBanner updatedAt={report.updatedAt} updatedLabel={updated} />
 
       <PoolsView pools={report.pools} days={report.days} />
 
