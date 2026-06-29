@@ -1,6 +1,6 @@
 import { POOLS, poolUrl } from "@/lib/pools";
 import { fetchPoolPage } from "@/lib/scrape";
-import { analyzeDay, exceptionalSignature } from "@/lib/parse-schedule";
+import { analyzeDay, exceptionalSignature, notificationBody } from "@/lib/parse-schedule";
 import { getWeekInfo } from "@/lib/today";
 import { getClosureSignatures, setClosureSignature, getSubscriptionsForPool } from "@/lib/push-store";
 import { sendPush } from "@/lib/push-notify";
@@ -39,10 +39,12 @@ export async function GET(req: Request) {
       // Ne notifier que l'apparition d'un NOUVEL évènement exceptionnel
       // (pas la disparition / réouverture — on met juste l'état à jour).
       if (signature) {
+        // Titre = piscine concernée ; corps = la news en clair (titre + détail).
+        const body = notificationBody(day);
         const subs = await getSubscriptionsForPool(pool.slug);
         let sent = 0;
         for (const sub of subs) {
-          if (await sendPush(sub, { title: pool.name, body: signature.slice(0, 160), url: SITE, slug: pool.slug }))
+          if (await sendPush(sub, { title: pool.name, body, url: SITE, slug: pool.slug }))
             sent++;
         }
         results.push({ slug: pool.slug, changed: true, notified: sent });

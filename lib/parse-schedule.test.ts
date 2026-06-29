@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   analyzeDay,
   exceptionalSignature,
+  notificationBody,
   parseDateRange,
   parseDays,
   parseTimeRanges,
@@ -553,6 +554,55 @@ describe("analyzeDay — cas réels", () => {
     const pendant = analyzeDay(p, today(20260629, 0), pool);
     expect(pendant.openToday).toBe(false);
     expect(pendant.closureReason).toMatch(/Yvonne Godard/);
+  });
+
+  it("Toulouse Lautrec : fermeture « En bref » DATÉE et HORAIRE (de 12h à 14h) → fermeture partielle, pas toute la journée", () => {
+    // Cas réel 2026-06-29 : la mairie ferme la piscine 12h-14h pour un problème
+    // technique. On doit retirer ce créneau, pas fermer la journée entière.
+    const partial: ShortNews = {
+      date: "2026-06-29",
+      title: "Fermeture de la piscine Toulouse Lautrec, lundi 29 juin, de 12h à 14h",
+      text: "En raison d'un problème technique, la piscine Toulouse Lautrec est fermée au public, ce lundi 29 juin, de 12h à 14h.",
+      pools: [],
+    };
+    const p = page(
+      [{ title: "Horaires", lines: [text("Du lundi au vendredi : 7h - 19h")] }],
+      "",
+      [],
+      [partial]
+    );
+    const pool = { slug: "piscine-toulouse-lautrec", name: "Toulouse Lautrec" };
+    const r = analyzeDay(p, today(20260629, 0), pool);
+    // Ouverte, mais le créneau 12h-14h est retiré (7h-12h puis 14h-19h).
+    expect(r.openToday).toBe(true);
+    expect(r.slotsToday).toEqual([
+      { start: "07:00", end: "12:00" },
+      { start: "14:00", end: "19:00" },
+    ]);
+    // L'actu reste affichée en bandeau.
+    expect(r.announcements.some((a) => /de 12h à 14h/i.test(a.title))).toBe(true);
+    // Un autre jour (mardi) n'est pas touché.
+    const mardi = analyzeDay(p, today(20260630, 1), pool);
+    expect(mardi.slotsToday).toEqual([{ start: "07:00", end: "19:00" }]);
+  });
+
+  it("notificationBody : contient la piscine (via le titre) et le détail de l'actu, pas seulement le titre", () => {
+    const partial: ShortNews = {
+      date: "2026-06-29",
+      title: "Fermeture de la piscine Toulouse Lautrec, lundi 29 juin, de 12h à 14h",
+      text: "En raison d'un problème technique, la piscine Toulouse Lautrec est fermée au public, ce lundi 29 juin, de 12h à 14h.",
+      pools: [],
+    };
+    const p = page([{ title: "Horaires", lines: [text("Lundi : 7h - 19h")] }], "", [], [partial]);
+    const r = analyzeDay(p, today(20260629, 0), {
+      slug: "piscine-toulouse-lautrec",
+      name: "Toulouse Lautrec",
+    });
+    const body = notificationBody(r);
+    expect(body).toMatch(/de 12h à 14h/i); // le créneau concerné
+    expect(body).toMatch(/problème technique/i); // le détail (motif), absent de la signature
+    // La signature (clé de dédup) reste fondée sur le titre seul.
+    expect(exceptionalSignature(r)).not.toMatch(/problème technique/i);
   });
 
   it("sans slug (appel historique) → l'actu « En bref » est ignorée", () => {

@@ -374,6 +374,43 @@ export function exceptionalSignature(day: DayStatus): string | null {
   return [...new Set(parts)].join(" | ").slice(0, 300);
 }
 
+/**
+ * Corps lisible de la notification : ce qui change pour la piscine, en clair.
+ * Contrairement à `exceptionalSignature` (clé de déduplication, fondée sur les
+ * titres), on y joint le DÉTAIL de chaque actu « En bref » (mesures, horaires,
+ * dates) — c'est la vraie information attendue par l'abonné (« fermeture de 12h
+ * à 14h », « extension canicule jusqu'à 20h »…). La piscine concernée est, elle,
+ * le titre de la notification (`pool.name`, cf. cron).
+ */
+export function notificationBody(day: DayStatus): string {
+  const annTitles = new Set((day.announcements ?? []).map((a) => norm(a.title)));
+  const parts: string[] = [];
+  // Fermeture exceptionnelle annoncée hors « En bref » (chapeau / encart).
+  if (
+    day.closureReason &&
+    EXCEPTIONAL_RE.test(day.closureReason) &&
+    !annTitles.has(norm(day.closureReason))
+  ) {
+    parts.push(day.closureReason);
+  }
+  // Actus « En bref » : titre + détail (la mesure réelle).
+  for (const a of day.announcements ?? []) {
+    parts.push(a.detail ? `${a.title} — ${a.detail}` : a.title);
+  }
+  // Alertes exceptionnelles de la grille non déjà couvertes par une actu.
+  for (const alert of day.alerts) {
+    if (EXCEPTIONAL_RE.test(alert) && !annTitles.has(norm(alert))) parts.push(alert);
+  }
+  const seen = new Set<string>();
+  const unique = parts.filter((p) => {
+    const k = norm(p);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  return unique.join(" · ").slice(0, 300) || "Changement signalé";
+}
+
 function findStrongClosure(texts: string[], today: TodayInfo): string | null {
   for (const text of texts) {
     const sentences = text.split(/(?<=[.!])\s+/);
@@ -555,8 +592,14 @@ interface PoolNews {
   detail: string | null;
   /** Heure de fermeture « HH:MM » si l'actu prolonge l'ouverture, sinon null */
   extendClose: string | null;
-  /** Raison de fermeture si l'actu ferme la piscine et s'applique aujourd'hui */
+  /** Raison de fermeture si l'actu ferme la piscine TOUTE la journée aujourd'hui */
   closure: string | null;
+  /**
+   * Plage(s) de fermeture PARTIELLE annoncée(s) (« fermée de 12h à 14h ») : on
+   * les retire des créneaux du jour au lieu de fermer toute la journée. Null si
+   * la fermeture est totale (ou l'actu n'est pas une fermeture).
+   */
+  closureWindow: TimeSlot[] | null;
 }
 
 /** Corps d'actu affichable : non vide, distinct du titre, borné en longueur. */
@@ -655,7 +698,19 @@ function collectPoolNews(
       // pour la vue semaine et pour ne pas afficher une fermeture future/passée).
       const range = closureRange(news.text, today.year) ?? closureRange(news.title, today.year);
       if (range && (today.dateKey < range.from || today.dateKey > range.to)) continue;
-      out.push({ title: news.title, detail: newsDetail(news), extendClose: null, closure: news.title });
+      // Fermeture partielle (« fermée … de 12h à 14h ») : on retire ce créneau
+      // plutôt que de fermer toute la journée. On n'y voit une fermeture
+      // partielle que si une plage horaire est citée ET que le texte ne décrit
+      // pas une fermeture de toute la journée/semaine.
+      const fullDay = /toute la journee|toute la semaine|journee complete|jusqu'a nouvel ordre/.test(hay);
+      const windows = fullDay ? [] : mergeSlots(parseTimeRanges(`${news.title}\n${news.text}`));
+      out.push({
+        title: news.title,
+        detail: newsDetail(news),
+        extendClose: null,
+        closure: windows.length > 0 ? null : news.title,
+        closureWindow: windows.length > 0 ? windows : null,
+      });
       continue;
     }
 
@@ -668,6 +723,7 @@ function collectPoolNews(
       detail: newsDetail(news),
       extendClose: linked ? parseExtensionClose(linked.after) : null,
       closure: null,
+      closureWindow: null,
     });
   }
   return out;
@@ -726,6 +782,10 @@ export function analyzeDay(
     null
   );
   const enBrefClosure = news.find((n) => n.closure)?.closure ?? null;
+  // Fermetures partielles (« fermée de 12h à 14h ») : plages à retirer des
+  // créneaux du jour, et titre à afficher si elles vident la journée entière.
+  const closeWindows = news.flatMap((n) => n.closureWindow ?? []);
+  const partialClosureTitle = news.find((n) => n.closureWindow)?.title ?? null;
 
   // 1. Fermeture exceptionnelle annoncée hors horaires → prioritaire
   const strongClosure = findStrongClosure(allTexts, today);
@@ -1051,11 +1111,19 @@ export function analyzeDay(
     });
   }
 
+  // Fermeture partielle annoncée « En bref » : on retire la plage du jour de
+  // chaque bassin. La piscine reste ouverte autour du créneau fermé.
+  if (closeWindows.length > 0) {
+    for (const b of basins) b.slots = subtractSlots(b.slots, closeWindows);
+  }
+
   const union = mergeSlots(basins.flatMap((b) => b.slots));
 
   if (union.length === 0) {
     const reason =
-      basins.find((b) => b.note)?.note ?? `Pas d'ouverture le ${DAY_NAMES[today.weekday]}`;
+      partialClosureTitle ??
+      basins.find((b) => b.note)?.note ??
+      `Pas d'ouverture le ${DAY_NAMES[today.weekday]}`;
     return {
       openToday: false,
       slotsToday: [],
