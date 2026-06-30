@@ -133,9 +133,17 @@ async function touchCacheTimer(fetchedAt: string): Promise<void> {
   if (error) throw error;
 }
 
-/** Nombre de piscines effectivement récupérées (page lue et analysée). */
+/**
+ * Nombre de piscines réellement exploitables : page récupérée, analysée ET
+ * porteuse d'horaires (au moins une section). Le `sections.length > 0` est
+ * essentiel : une page de maintenance renvoyée en HTTP 200 (cf. fetchPoolPage)
+ * ou un blob déjà mis en cache « à vide » par une ancienne version compte alors
+ * pour zéro — on évite de servir ou d'écrire un rapport sans aucun horaire.
+ */
 function usablePoolCount(report: StatusReport): number {
-  return report.pools.filter((p) => p.ok && p.week !== null).length;
+  return report.pools.filter(
+    (p) => p.ok && p.week !== null && p.raw !== null && p.raw.sections.length > 0
+  ).length;
 }
 
 /**
@@ -162,9 +170,16 @@ export async function getStatusReport(): Promise<StatusReport> {
 
   try {
     const cached = await readCachedReport();
-    // Un blob d'une version de schéma différente (ancien déploiement) est ignoré.
+    // « Dernier bon rapport » = bon schéma ET réellement porteur d'horaires. Un
+    // blob d'une autre version (ancien déploiement) ou vidé par le bug de la
+    // page de maintenance servie en 200 (toutes les piscines sans section) ne
+    // doit pas être servi comme référence : on l'ignore.
     const lastGood =
-      cached && cached.report.version === CACHE_SCHEMA_VERSION ? cached : null;
+      cached &&
+      cached.report.version === CACHE_SCHEMA_VERSION &&
+      usablePoolCount(cached.report) > 0
+        ? cached
+        : null;
     if (lastGood && Date.now() - lastGood.fetchedAt < TTL_MS) {
       return lastGood.report;
     }

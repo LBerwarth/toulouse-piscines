@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { parsePoolPage } from "./scrape";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { fetchPoolPage, parsePoolPage } from "./scrape";
 
 describe("parsePoolPage", () => {
   it("lit les horaires d'un bloc « texte encadré » hors accordéon (piscines d'été)", () => {
@@ -119,5 +119,42 @@ describe("parsePoolPage", () => {
       { kind: "text", text: "Mardi : fermé" },
       { kind: "text", text: "Jeudi : 16h - 19h" },
     ]);
+  });
+});
+
+describe("fetchPoolPage", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const mockFetch = (status: number, body: string) =>
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status })));
+
+  it("lève sur la page de maintenance (HTTP 200 sans aucune section d'horaires)", async () => {
+    // La mairie sert sa maintenance avec un 200 et aucune grille : sans ce
+    // garde-fou, le rapport écraserait le dernier bon cache par du vide.
+    mockFetch(
+      200,
+      `<html><head><title>Toulouse Mairie Métropole, site officiel.</title></head>
+        <body><h1>Site en maintenance</h1><p>Le site sera de nouveau disponible.</p></body></html>`
+    );
+    await expect(fetchPoolPage("https://x/piscine")).rejects.toThrow(/maintenance/i);
+  });
+
+  it("renvoie la page quand elle porte au moins une section d'horaires", async () => {
+    mockFetch(
+      200,
+      `<html><body>
+        <div class="accordion-item">
+          <button class="accordion-button"><span class="accordion-button__text">Horaires</span></button>
+          <div class="accordion-body"><p>Lundi : 12h - 14h</p></div>
+        </div>
+      </body></html>`
+    );
+    const page = await fetchPoolPage("https://x/piscine");
+    expect(page.sections).toHaveLength(1);
+  });
+
+  it("lève sur une erreur HTTP", async () => {
+    mockFetch(503, "Service Unavailable");
+    await expect(fetchPoolPage("https://x/piscine")).rejects.toThrow(/HTTP 503/);
   });
 });

@@ -53,7 +53,17 @@ export async function fetchPoolPage(url: string, opts?: { fresh?: boolean }): Pr
   if (!res.ok) {
     throw new Error(`HTTP ${res.status} en récupérant ${url}`);
   }
-  return parsePoolPage(await res.text());
+  const page = parsePoolPage(await res.text());
+  // La mairie sert sa page de maintenance avec un HTTP 200 (« Site en
+  // maintenance », sans aucune grille). Une refonte qui casserait le parseur
+  // produirait le même vide. Dans les deux cas la page n'a rien d'exploitable :
+  // on lève plutôt que de renvoyer un horaire vide — ainsi le rapport retombe
+  // sur le dernier bon cache (cf. status.ts) au lieu de l'écraser par du vide,
+  // et le cron n'émet pas de fausses notifications de fermeture.
+  if (page.sections.length === 0) {
+    throw new Error(`Aucune section d'horaires sur ${url} (page de maintenance ?)`);
+  }
+  return page;
 }
 
 export function parsePoolPage(html: string): PageSections {
