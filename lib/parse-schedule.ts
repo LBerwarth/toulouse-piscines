@@ -600,6 +600,13 @@ interface PoolNews {
    * la fermeture est totale (ou l'actu n'est pas une fermeture).
    */
   closureWindow: TimeSlot[] | null;
+  /**
+   * Mot-clé du bassin visé quand la fermeture ne concerne QU'UN bassin précis
+   * (« fermeture du bassin nordique » → "nordique"). On l'applique alors bassin
+   * par bassin (cf. analyzeDay), sans fermer toute la piscine. Null = la
+   * fermeture vise toute la piscine.
+   */
+  closureScope: string | null;
 }
 
 /** Corps d'actu affichable : non vide, distinct du titre, borné en longueur. */
@@ -661,6 +668,25 @@ function closureRange(text: string, refYear: number): DateRange | null {
 }
 
 /**
+ * Bassin visé par une fermeture, quand l'actu ne ferme qu'un bassin précis.
+ * Renvoie un mot-clé normalisé qui se retrouve dans le libellé du bassin de la
+ * grille (ex. « bassin nordique » → "nordique", qui matche « Bassins nordiques
+ * extérieurs »). Null si aucun bassin précis n'est nommé → fermeture de toute
+ * la piscine. `hay` est déjà normalisé (norm()).
+ */
+const BASIN_SCOPE_TOKENS = ["nordique", "sportif", "petit bassin", "grand bassin"];
+function basinClosureScope(hay: string): string | null {
+  for (const tok of BASIN_SCOPE_TOKENS) {
+    if (hay.includes(tok)) return tok;
+  }
+  // Synonymes intérieur / extérieur (les libellés de grille portent l'un ou
+  // l'autre : « … intérieurs », « … extérieurs »).
+  if (/\bexterieurs?\b|plein air/.test(hay)) return "exterieur";
+  if (/\binterieurs?\b|couvert/.test(hay)) return "interieur";
+  return null;
+}
+
+/**
  * Actualités « En bref » concernant cette piscine et applicables aujourd'hui.
  * Le bloc est identique sur toutes les pages : on ne retient une actu que si
  * elle cite la piscine, soit par un lien /annuaire/<slug> (extensions
@@ -710,6 +736,7 @@ function collectPoolNews(
         extendClose: null,
         closure: windows.length > 0 ? null : news.title,
         closureWindow: windows.length > 0 ? windows : null,
+        closureScope: windows.length > 0 ? null : basinClosureScope(hay),
       });
       continue;
     }
@@ -724,6 +751,7 @@ function collectPoolNews(
       extendClose: linked ? parseExtensionClose(linked.after) : null,
       closure: null,
       closureWindow: null,
+      closureScope: null,
     });
   }
   return out;
@@ -781,7 +809,12 @@ export function analyzeDay(
     (max, n) => (n.extendClose && (!max || n.extendClose > max) ? n.extendClose : max),
     null
   );
-  const enBrefClosure = news.find((n) => n.closure)?.closure ?? null;
+  // Fermeture « En bref » de TOUTE la piscine (aucun bassin précis nommé) :
+  // elle prime sur les horaires publiés. Une fermeture ciblant un bassin donné
+  // (« bassin nordique ») est, elle, appliquée bassin par bassin plus bas, pour
+  // ne pas fermer à tort les autres bassins.
+  const wholeClosure = news.find((n) => n.closure && !n.closureScope)?.closure ?? null;
+  const scopedClosures = news.filter((n) => n.closure && n.closureScope);
   // Fermetures partielles (« fermée de 12h à 14h ») : plages à retirer des
   // créneaux du jour, et titre à afficher si elles vident la journée entière.
   const closeWindows = news.flatMap((n) => n.closureWindow ?? []);
@@ -802,13 +835,14 @@ export function analyzeDay(
     };
   }
 
-  // 1 bis. Fermeture annoncée « En bref » concernant cette piscine (saisonnière,
-  // sans lien dans la grille) → fermée, prime sur les horaires publiés.
-  if (enBrefClosure) {
+  // 1 bis. Fermeture annoncée « En bref » de TOUTE la piscine (saisonnière, sans
+  // lien dans la grille) → fermée, prime sur les horaires publiés. (Les
+  // fermetures ciblant un bassin précis sont traitées après la grille.)
+  if (wholeClosure) {
     return {
       openToday: false,
       slotsToday: [],
-      closureReason: enBrefClosure,
+      closureReason: wholeClosure,
       alerts,
       confidence: "high",
       basins: [],
@@ -1067,6 +1101,27 @@ export function analyzeDay(
     }
   }
 
+  // Fermeture « En bref » ciblant un bassin précis (« fermeture du bassin
+  // nordique … ») : on ne ferme QUE le(s) bassin(s) correspondant(s), en gardant
+  // les autres tels que la grille les décrit (ex. été : intérieurs déjà fermés,
+  // nordique fermé par l'actu → deux lignes distinctes). Bassin introuvable dans
+  // la grille → par sécurité, fermeture de toute la piscine (mieux vaut
+  // sur-fermer qu'ignorer un avis de fermeture).
+  let scopedFallbackReason: string | null = null;
+  for (const sc of scopedClosures) {
+    const scope = sc.closureScope!;
+    const matched = basins.filter((b) => b.label && norm(b.label).includes(scope));
+    if (matched.length > 0) {
+      for (const b of matched) {
+        b.slots = [];
+        b.note = sc.closure;
+      }
+    } else {
+      for (const b of basins) b.slots = [];
+      scopedFallbackReason = sc.closure;
+    }
+  }
+
   // Repli « canicule » : quand la mairie a déclaré un épisode dans le bloc « En
   // bref » et que la grille active porte une règle conditionnelle (« En cas
   // d'alerte orange canicule, fermeture à 21h »), on honore cette fermeture
@@ -1121,6 +1176,7 @@ export function analyzeDay(
 
   if (union.length === 0) {
     const reason =
+      scopedFallbackReason ??
       partialClosureTitle ??
       basins.find((b) => b.note)?.note ??
       `Pas d'ouverture le ${DAY_NAMES[today.weekday]}`;

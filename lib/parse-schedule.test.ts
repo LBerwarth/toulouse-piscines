@@ -363,6 +363,54 @@ describe("analyzeDay — cas réels", () => {
     expect(interieurs?.slots).toEqual([]);
   });
 
+  const bellevuePool = { slug: "piscine-bellevue", name: "Bellevue" };
+  const nordicClosure: ShortNews = {
+    date: "2026-07-01",
+    title: "Fermeture du bassin nordique de la piscine Bellevue jusqu'à nouvel ordre",
+    text: "En raison d'un problème technique, le bassin nordique de la piscine Bellevue est fermé jusqu'à nouvel ordre.",
+    pools: [],
+  };
+
+  it("Bellevue été + « En bref » ferme le bassin nordique → deux lignes (nordique + intérieurs fermés), pas un simple message", () => {
+    const p = { ...bellevue, shorts: [nordicClosure] };
+    const r = analyzeDay(p, today(20260715, 2), bellevuePool);
+    expect(r.openToday).toBe(false);
+    // Le détail par bassin est conservé (≠ ancien comportement basins:[]).
+    const nordique = r.basins.find((b) => /nordique/i.test(b.label ?? ""));
+    const interieurs = r.basins.find((b) => /intérieurs/i.test(b.label ?? ""));
+    expect(nordique?.slots).toEqual([]);
+    expect(nordique?.note).toMatch(/bassin nordique/i);
+    expect(interieurs?.slots).toEqual([]);
+    // …et la fermeture reste notifiable.
+    expect(exceptionalSignature(r)).toMatch(/bassin nordique/i);
+  });
+
+  it("Bellevue mai + « En bref » ferme le bassin nordique → nordique fermé, sportifs intérieurs restent ouverts (pas de sur-fermeture)", () => {
+    const p = { ...bellevue, shorts: [nordicClosure] };
+    const r = analyzeDay(p, today(20260514, 3), bellevuePool);
+    const sportifs = r.basins.find((b) => /sportifs/i.test(b.label ?? ""));
+    const nordiques = r.basins.find((b) => /nordiques/i.test(b.label ?? ""));
+    expect(nordiques?.slots).toEqual([]);
+    expect(nordiques?.note).toMatch(/bassin nordique/i);
+    expect(sportifs?.slots).toEqual([{ start: "16:00", end: "19:00" }]);
+    expect(r.openToday).toBe(true);
+    expect(r.slotsToday).toEqual([{ start: "16:00", end: "19:00" }]);
+  });
+
+  it("Bellevue + « En bref » ferme TOUTE la piscine (sans bassin précis) → fermeture pool-wide", () => {
+    const wholeClosure: ShortNews = {
+      date: "2026-07-01",
+      title: "Fermeture de la piscine Bellevue jusqu'à nouvel ordre",
+      text: "La piscine Bellevue est fermée au public jusqu'à nouvel ordre.",
+      pools: [],
+    };
+    const p = { ...bellevue, shorts: [wholeClosure] };
+    const r = analyzeDay(p, today(20260715, 2), bellevuePool);
+    expect(r.openToday).toBe(false);
+    expect(r.closureReason).toMatch(/piscine Bellevue/i);
+    expect(r.basins).toEqual([]);
+  });
+
   it("« (petit bassin fermé de 17h à 19h) » → bassin dérivé aux créneaux réduits", () => {
     const p = page([
       {
