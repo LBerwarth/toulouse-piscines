@@ -7,8 +7,10 @@ import { WeekTimeline } from "./week-timeline";
 import { PoolList } from "./pool-list";
 import { usePoolNotifications } from "./use-pool-notifications";
 
-type Filter = "all" | Environment;
+type Filter = "all" | "favorites" | Environment;
 
+// Options de bassins (toujours présentes). « Favoris » s'ajoute dynamiquement,
+// seulement quand l'utilisateur a des ★ (cf. PoolsView).
 const OPTIONS: { value: Filter; label: string }[] = [
   { value: "all", label: "Toutes" },
   { value: "indoor", label: "Intérieur" },
@@ -47,8 +49,11 @@ function filterDay(day: DayStatus, env: Environment): DayStatus {
   };
 }
 
-function filterPools(pools: PoolStatus[], filter: Filter): PoolStatus[] {
+function filterPools(pools: PoolStatus[], filter: Filter, favorites: string[]): PoolStatus[] {
   if (filter === "all") return pools;
+  // « Favoris » : filtre par piscine (indépendant du type de bassin), on garde
+  // la piscine entière.
+  if (filter === "favorites") return pools.filter((p) => favorites.includes(p.slug));
   const out: PoolStatus[] = [];
   for (const pool of pools) {
     if (pool.env !== "mixed") {
@@ -67,19 +72,41 @@ function filterPools(pools: PoolStatus[], filter: Filter): PoolStatus[] {
 
 export function PoolsView({ pools, days }: { pools: PoolStatus[]; days: WeekDayRef[] }) {
   const [filter, setFilter] = useState<Filter>("all");
-  const filtered = filterPools(pools, filter);
   const notif = usePoolNotifications();
+  const hasFavorites = notif.favorites.length > 0;
+
+  // « Favoris » sélectionné mais plus aucun ★ (favoris retirés) : on retombe sur
+  // « Toutes ». Dérivé au rendu (pas de setState en effet) — le bouton Favoris
+  // disparaît alors, donc pas de filtre vide sans échappatoire.
+  const effectiveFilter: Filter = filter === "favorites" && !hasFavorites ? "all" : filter;
+
+  const options = hasFavorites
+    ? [...OPTIONS, { value: "favorites" as Filter, label: "★ Favoris" }]
+    : OPTIONS;
+  const filtered = filterPools(pools, effectiveFilter, notif.favorites);
+
+  // Explication des notifications, formulée pour rendre le modèle explicite :
+  // par défaut on est alerté de TOUTES les piscines ; ajouter des ★ restreint
+  // aux favorites, tout enlever revient à toutes les suivre.
+  const favCount = notif.favorites.length;
+  const notifHint = notif.denied
+    ? "Notifications bloquées par le navigateur — autorisez-les dans les réglages pour être alerté·e."
+    : notif.subscribed
+      ? favCount > 0
+        ? `🔔 Alertes activées pour vos ${favCount} piscine${favCount > 1 ? "s" : ""} favorite${favCount > 1 ? "s" : ""} ★. Retirez toutes les étoiles pour être de nouveau alerté·e de toutes les piscines.`
+        : "🔔 Alertes activées pour toutes les piscines. Touchez l'étoile ★ d'une ou plusieurs piscines pour ne recevoir que leurs alertes."
+      : "Activez les alertes pour être prévenu·e des fermetures et changements exceptionnels (horaires prolongés, canicule…). Sans ★, vous serez alerté·e de toutes les piscines ; ajoutez des ★ pour ne suivre que les vôtres.";
 
   return (
     <>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium uppercase tracking-wide text-violet-800/70">
-            Bassins
+            Afficher
           </span>
           <div className="flex gap-1.5">
-            {OPTIONS.map((opt) => {
-              const isSel = filter === opt.value;
+            {options.map((opt) => {
+              const isSel = effectiveFilter === opt.value;
               return (
                 <button
                   key={opt.value}
@@ -121,15 +148,7 @@ export function PoolsView({ pools, days }: { pools: PoolStatus[]; days: WeekDayR
       {/* Toujours visible (pas seulement au survol) : sur mobile il n'y a pas
           d'infobulle, c'est ici qu'on explique l'objet des notifications. */}
       {notif.supported && (
-        <p className="-mt-2 mb-4 text-xs text-slate-500">
-          {notif.denied
-            ? "Notifications bloquées par le navigateur — autorisez-les dans les réglages pour être alerté·e."
-            : notif.subscribed
-              ? notif.favorites.length > 0
-                ? "Vous serez alerté·e des fermetures et changements exceptionnels de vos piscines ★."
-                : "Vous serez alerté·e des fermetures et changements exceptionnels de toutes les piscines (ajoutez des ★ pour filtrer)."
-              : "Activez les alertes pour être prévenu·e des fermetures et changements exceptionnels (horaires prolongés, canicule…)."}
-        </p>
+        <p className="-mt-2 mb-4 text-xs text-slate-500">{notifHint}</p>
       )}
 
       {filtered.length === 0 ? (
