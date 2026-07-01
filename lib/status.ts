@@ -81,10 +81,38 @@ const TTL_MS = 1800_000; // 30 min
  */
 const CACHE_SCHEMA_VERSION = 2;
 
+/**
+ * Applique `fn` aux éléments en gardant au plus `limit` requêtes en vol, dans
+ * l'ordre. Éviter de tirer les 12 pages d'un coup : un burst depuis une seule
+ * IP datacenter (Vercel) déclenchait la protection anti-bot de la source. `fn`
+ * (getPoolStatus) ne rejette jamais — inutile de gérer les erreurs ici.
+ */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  async function worker(): Promise<void> {
+    while (next < items.length) {
+      const idx = next++;
+      results[idx] = await fn(items[idx]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
+/** Nombre de pages récupérées en parallèle (cf. mapWithConcurrency). */
+const FETCH_CONCURRENCY = 4;
+
 /** Scrape les 12 pages et construit le rapport. `fresh` force une requête réseau. */
 async function buildReport(fresh: boolean): Promise<StatusReport> {
   const week = await getWeekInfo();
-  const pools = await Promise.all(POOLS.map((p) => getPoolStatus(p, week, fresh)));
+  const pools = await mapWithConcurrency(POOLS, FETCH_CONCURRENCY, (p) =>
+    getPoolStatus(p, week, fresh)
+  );
   return {
     updatedAt: new Date().toISOString(),
     version: CACHE_SCHEMA_VERSION,
@@ -194,9 +222,22 @@ export async function getStatusReport(): Promise<StatusReport> {
       return fresh;
     }
 
-    // Échec total du rescan (source indisponible). On conserve le dernier bon
-    // rapport et on repousse la prochaine tentative de TTL_MS (pour ne pas
-    // marteler une source en panne à chaque visite).
+    // Échec total du rescan (source indisponible). On journalise le détail par
+    // piscine — visible dans les logs Vercel — pour distinguer un vrai incident
+    // source (HTTP 403, page de maintenance, timeout) d'un souci de parseur.
+    console.error(
+      "[status] rescan sans piscine exploitable, repli sur le dernier bon rapport :",
+      fresh.pools
+        .map((p) =>
+          p.ok
+            ? `${p.slug}: ok sections=${p.raw?.sections.length ?? 0}`
+            : `${p.slug}: KO ${p.error}`
+        )
+        .join(" | ")
+    );
+
+    // On conserve le dernier bon rapport et on repousse la prochaine tentative
+    // de TTL_MS (pour ne pas marteler une source en panne à chaque visite).
     if (lastGood) {
       try {
         await touchCacheTimer(new Date().toISOString());

@@ -48,7 +48,17 @@ export async function fetchPoolPage(url: string, opts?: { fresh?: boolean }): Pr
     // On ne peut pas combiner `cache` et `next.revalidate` : soit on force le
     // réseau, soit on s'appuie sur le Data Cache (30 min).
     ...(opts?.fresh ? { cache: "no-store" as const } : { next: { revalidate: REVALIDATE_SECONDS } }),
-    headers: { "User-Agent": "toulouse-piscines (projet personnel)" },
+    // En-têtes proches d'un navigateur : depuis les IP datacenter de Vercel, la
+    // source (Varnish + protection en façade) renvoyait sinon une page vide en
+    // HTTP 200 à notre ancien User-Agent « bot », d'où des rescans à zéro
+    // horaire pris à tort pour une maintenance. Accès légitime à des données
+    // publiques pour une appli gratuite et non commerciale.
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "fr-FR,fr;q=0.9",
+    },
   });
   if (!res.ok) {
     throw new Error(`HTTP ${res.status} en récupérant ${url}`);
