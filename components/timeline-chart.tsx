@@ -39,9 +39,13 @@ type Row =
   | { kind: "bar"; key: string; slug: string; label: string; sub: boolean; slots: TimeSlot[]; tip: string }
   | { kind: "off"; key: string; slug: string; label: string; sub: boolean; note: string };
 
-function shortNote(note: string | null, fallback: string): string {
-  const n = note ?? fallback;
-  return n.length > 60 ? `${n.slice(0, 57)}…` : n;
+// Note de fermeture affichée dans la barre : on renvoie le texte complet et on
+// laisse le CSS le tronquer selon la largeur (plein sur ordinateur, coupé avec
+// « … » sur mobile, texte entier au survol via title). Simple borne de sécurité,
+// sans « … » ajouté à la main (l'ellipse vient du CSS).
+function noteText(note: string | null, fallback: string): string {
+  const n = (note ?? fallback).trim();
+  return n.length > 160 ? n.slice(0, 160) : n;
 }
 
 function basinRow(poolName: string, slug: string, basin: BasinSchedule): Row {
@@ -50,7 +54,7 @@ function basinRow(poolName: string, slug: string, basin: BasinSchedule): Row {
   if (basin.slots.length > 0) {
     return { kind: "bar", key, slug, label, sub: true, slots: basin.slots, tip: `${poolName} — ${label}` };
   }
-  return { kind: "off", key, slug, label, sub: true, note: shortNote(basin.note, "fermé") };
+  return { kind: "off", key, slug, label, sub: true, note: noteText(basin.note, "fermé") };
 }
 
 function buildRows(entries: TimelineEntry[]): Row[] {
@@ -84,7 +88,7 @@ function buildRows(entries: TimelineEntry[]): Row[] {
           slug: entry.slug,
           label: entry.name,
           sub: false,
-          note: shortNote(day.closureReason, "fermée"),
+          note: noteText(day.closureReason, "fermée"),
         });
       }
     } else if (main) {
@@ -106,7 +110,7 @@ function buildRows(entries: TimelineEntry[]): Row[] {
           slug: entry.slug,
           label: entry.name,
           sub: false,
-          note: shortNote(main.note ?? day.closureReason, "fermée"),
+          note: noteText(main.note ?? day.closureReason, "fermée"),
         });
       }
       for (const basin of labeled) rows.push(basinRow(entry.name, entry.slug, basin));
@@ -264,11 +268,15 @@ export function TimelineChart({
             <div key={row.key} className={wrapClass} style={colStyle}>
               {nameEl}
               <Track>
+                {/* left+right bornent la largeur : le texte s'affiche en entier
+                    quand la barre est assez large (ordinateur) et se tronque
+                    avec « … » quand elle est étroite (mobile) ; title = texte
+                    complet au survol. */}
                 <span
-                  className="absolute inset-y-0 left-1.5 flex items-center truncate pr-2 text-[10px] italic text-slate-400"
+                  className="absolute inset-y-0 left-1.5 right-2 flex items-center text-[10px] italic text-slate-400"
                   title={row.note}
                 >
-                  {row.note}
+                  <span className="truncate">{row.note}</span>
                 </span>
               </Track>
             </div>
