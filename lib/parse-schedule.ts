@@ -1,5 +1,6 @@
 import type { PageSections, SectionLine, ShortNews } from "./scrape";
 import type { TodayInfo } from "./today";
+import { classifyBasinEnv } from "./environment";
 
 export interface TimeSlot {
   start: string; // "HH:MM"
@@ -234,6 +235,11 @@ interface PeriodBlock {
   range: DateRange | null;
   periodType: PeriodType;
   rules: string[];
+  /**
+   * Bloc « Horaires d'été » (distinct de « vacances scolaires hors été ») : sert
+   * à n'ouvrir un bassin estival (petit bassin extérieur) que sur cette période.
+   */
+  summer: boolean;
 }
 
 function periodTypeOf(title: string): PeriodType {
@@ -241,6 +247,15 @@ function periodTypeOf(title: string): PeriodType {
   if (/vacances|estival|ete\b/.test(t)) return "vacation";
   if (/scolaire/.test(t)) return "school";
   return null;
+}
+
+/**
+ * Section « Horaires d'été » — hors « vacances scolaires (hors été) », qui n'est
+ * pas la saison estivale au sens des bassins de plein air.
+ */
+function isSummerTitle(title: string): boolean {
+  const t = norm(title);
+  return /\bete\b|estival/.test(t) && !/hors\s*ete/.test(t) && !/vacances/.test(t);
 }
 
 /**
@@ -265,8 +280,9 @@ function buildBlocks(
     if (!/horaire|ouverture|periode/.test(norm(section.title))) continue;
     const sectionRange = parseDateRange(section.title, refYear);
     const periodType = periodTypeOf(section.title);
+    const summer = isSummerTitle(section.title);
 
-    let current: PeriodBlock = { range: sectionRange, periodType, rules: [] };
+    let current: PeriodBlock = { range: sectionRange, periodType, rules: [], summer };
     blocks.push(current);
 
     for (const line of section.lines) {
@@ -291,10 +307,10 @@ function buildBlocks(
         (labelType !== null || labelRange !== null || /habituel|exceptionnel|chaleur|canicule/.test(n));
 
       if (headingRange) {
-        current = { range: headingRange, periodType, rules: [] };
+        current = { range: headingRange, periodType, rules: [], summer };
         blocks.push(current);
       } else if (isScheduleLabel) {
-        current = { range: labelRange, periodType: labelType, rules: [] };
+        current = { range: labelRange, periodType: labelType, rules: [], summer };
         blocks.push(current);
       } else {
         current.rules.push(line.text);
@@ -561,6 +577,28 @@ export function detectOpenBasinLabel(texts: string[]): string | null {
     }
   }
   return null;
+}
+
+/**
+ * La page décrit-elle un petit bassin extérieur ouvert l'été uniquement (ex.
+ * Bellevue : « Petit bassin ouvert uniquement l'été… ») ? La mairie ne lui donne
+ * pas d'horaires propres dans la grille : on l'ouvrira alors sur les créneaux du
+ * bassin nordique extérieur, mais seulement en période estivale. On écarte les
+ * notes de fermeture hivernale (« … fermé pour la période hivernale »).
+ */
+function hasSummerOnlyExtraBasin(page: PageSections): boolean {
+  const texts = [
+    page.intro,
+    ...page.notices,
+    ...page.sections.flatMap((s) => s.lines.map((l) => l.text)),
+  ];
+  // La description figure souvent dans un long paragraphe (qui mentionne aussi
+  // « en saison hivernale ») : on cible donc la tournure exacte « petit bassin …
+  // ouvert/uniquement … été ». La note hivernale (« petit bassin … fermé pour la
+  // période hivernale ») ne matche pas — ni « ouvert » ni « uniquement » n'y
+  // précèdent « été ».
+  const re = /petit bassin[^.]{0,40}\b(?:ouvert|uniquement)\b[^.]{0,25}\bete\b/;
+  return texts.some((t) => re.test(norm(t)));
 }
 
 /** Retire des créneaux les plages fermées (ex. petit bassin fermé de 17h à 19h) */
@@ -1170,6 +1208,24 @@ export function analyzeDay(
   // chaque bassin. La piscine reste ouverte autour du créneau fermé.
   if (closeWindows.length > 0) {
     for (const b of basins) b.slots = subtractSlots(b.slots, closeWindows);
+  }
+
+  // Petit bassin extérieur ouvert l'été uniquement (décrit par la page mais sans
+  // horaires propres) : ajouté comme bassin distinct en période estivale, sur
+  // les créneaux du bassin extérieur ouvert du jour (le nordique). Hors été il
+  // n'apparaît pas ; on ne double pas un « petit bassin » déjà présent.
+  if (selected.summer && hasSummerOnlyExtraBasin(page)) {
+    const outdoorOpen = basins.find(
+      (b) => b.slots.length > 0 && classifyBasinEnv(b.label) === "outdoor"
+    );
+    const already = basins.some((b) => /petit bassin/.test(norm(b.label ?? "")));
+    if (outdoorOpen && !already) {
+      basins.push({
+        label: "Petit bassin extérieur",
+        slots: mergeSlots(outdoorOpen.slots),
+        note: null,
+      });
+    }
   }
 
   const union = mergeSlots(basins.flatMap((b) => b.slots));

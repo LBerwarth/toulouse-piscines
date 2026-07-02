@@ -411,6 +411,42 @@ describe("analyzeDay — cas réels", () => {
     expect(r.basins).toEqual([]);
   });
 
+  // Bellevue avec la description « Petit bassin ouvert uniquement l'été » (dans
+  // « Les coordonnées », hors grille d'horaires).
+  const bellevuePetit = page([
+    {
+      title: "Horaires en période scolaire",
+      lines: [
+        heading("Bassins nordiques extérieurs"),
+        text("Jeudi : 12h - 21h"),
+      ],
+    },
+    {
+      title: "Horaires d'été à compter du 4 juillet 2026",
+      lines: [
+        heading("Du 4 juillet au 30 août"),
+        text("Bassin nordique uniquement de 10h à 20h"),
+        text("Les bassins intérieurs sont fermés"),
+      ],
+    },
+    {
+      title: "Les coordonnées",
+      lines: [text("Petit bassin ouvert uniquement l'été de 10,70mx5,75m et de 0,35m à 0,55m de profondeur")],
+    },
+  ]);
+
+  it("Bellevue été : le petit bassin extérieur estival apparaît en 3e ligne, sur les horaires du nordique", () => {
+    const r = analyzeDay(bellevuePetit, today(20260715, 2), bellevuePool);
+    const petit = r.basins.find((b) => /petit bassin/i.test(b.label ?? ""));
+    expect(petit).toBeDefined();
+    expect(petit?.slots).toEqual([{ start: "10:00", end: "20:00" }]);
+  });
+
+  it("Bellevue hors été : pas de petit bassin estival, même quand la page le décrit", () => {
+    const r = analyzeDay(bellevuePetit, today(20260514, 3), bellevuePool);
+    expect(r.basins.some((b) => /petit bassin/i.test(b.label ?? ""))).toBe(false);
+  });
+
   it("« (petit bassin fermé de 17h à 19h) » → bassin dérivé aux créneaux réduits", () => {
     const p = page([
       {
