@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyBasinEnv, poolHasEnv } from "./environment";
+import { classifyBasinEnv, isAnnexBasin, poolHasEnv } from "./environment";
 import { POOLS } from "./pools";
 
 describe("classifyBasinEnv", () => {
@@ -16,6 +16,22 @@ describe("classifyBasinEnv", () => {
   it("renvoie null quand le libellé ne tranche pas", () => {
     expect(classifyBasinEnv("petit bassin")).toBeNull();
     expect(classifyBasinEnv(null)).toBeNull();
+  });
+});
+
+describe("isAnnexBasin", () => {
+  it("classe petit bassin / pataugeoire / apprentissage en annexe", () => {
+    expect(isAnnexBasin("petit bassin")).toBe(true);
+    expect(isAnnexBasin("Petit bassin extérieur")).toBe(true);
+    expect(isAnnexBasin("pataugeoire")).toBe(true);
+    expect(isAnnexBasin("bassin d'apprentissage")).toBe(true);
+  });
+
+  it("les bassins de nage ne sont pas des annexes", () => {
+    expect(isAnnexBasin(null)).toBe(false); // bassin principal non nommé
+    expect(isAnnexBasin("Grand bassin")).toBe(false);
+    expect(isAnnexBasin("Bassins sportifs intérieurs")).toBe(false);
+    expect(isAnnexBasin('bassin sportif nordique "Gisèle Vallerey"')).toBe(false);
   });
 });
 

@@ -27,3 +27,13 @@ export function classifyBasinEnv(label: string | null): Environment | null {
 export function poolHasEnv(poolEnv: PoolEnv, target: Environment): boolean {
   return poolEnv === "mixed" || poolEnv === target;
 }
+
+/**
+ * Bassin « annexe » d'après son libellé : petit bassin, pataugeoire, fosse,
+ * bassin d'apprentissage ou ludique — jamais aux normes 25/50 m. Le filtre
+ * longueur les écarte pour ne pas afficher leurs créneaux comme ceux d'un
+ * bassin de nage. Un libellé null (bassin principal) n'est pas une annexe.
+ */
+export function isAnnexBasin(label: string | null): boolean {
+  return /petit bassin|pataugeoire|fosse|apprentissage|ludique/.test(norm(label ?? ""));
+}
