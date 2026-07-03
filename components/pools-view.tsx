@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import type { DayStatus, PoolStatus, TimeSlot, WeekDayRef } from "@/lib/status";
 import { classifyBasinEnv, isAnnexBasin, type Environment } from "@/lib/environment";
 import { POOLS, poolHasBasinLength, type BasinLength, type Pool } from "@/lib/pools";
@@ -8,9 +8,10 @@ import { WeekTimeline } from "./week-timeline";
 import { PoolList } from "./pool-list";
 import { usePoolNotifications } from "./use-pool-notifications";
 
-// Filtres combinables : emplacement × longueur de bassin × favoris.
+// Filtres combinables : emplacement × longueur de bassin × ouverture × favoris.
 type EnvFilter = "all" | Environment;
 type LengthFilter = "all" | BasinLength;
+type OpenFilter = "all" | "now" | "today";
 
 const ENV_OPTIONS: { value: EnvFilter; label: string }[] = [
   { value: "all", label: "Toutes" },
@@ -23,6 +24,27 @@ const LENGTH_OPTIONS: { value: LengthFilter; label: string }[] = [
   { value: 25, label: "25 m" },
   { value: 50, label: "50 m" },
 ];
+
+const OPEN_OPTIONS: { value: OpenFilter; label: string }[] = [
+  { value: "all", label: "Toutes" },
+  { value: "now", label: "Maintenant" },
+  { value: "today", label: "Aujourd'hui" },
+];
+
+function nowInToulouse(): string {
+  return new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date());
+}
+
+/** Réévalue l'heure chaque minute pour tenir à jour le filtre « Maintenant ». */
+function subscribeToMinute(onChange: () => void): () => void {
+  const timer = setInterval(onChange, 60_000);
+  return () => clearInterval(timer);
+}
 
 // Les longueurs de bassins ne sont pas dans PoolStatus (données scrapées) :
 // on les lit dans les métadonnées statiques, par slug.
@@ -82,6 +104,8 @@ function filterPools(
   pools: PoolStatus[],
   env: EnvFilter,
   length: LengthFilter,
+  open: OpenFilter,
+  now: string | null,
   favorites: string[] | null
 ): PoolStatus[] {
   // « Favoris » : filtre par piscine (indépendant des autres critères), on
@@ -108,10 +132,26 @@ function filterPools(
   // toutes les piscines sous filtre longueur — les annexes disparaissent).
   const needsDayFilter = (pool: PoolStatus) =>
     (env !== "all" && pool.env === "mixed") || length !== "all";
-  return selected.map((pool) => {
+  const pruned = selected.map((pool) => {
     const meta = POOL_BY_SLUG.get(pool.slug);
     if (!meta || !pool.week || !needsDayFilter(pool)) return pool;
     return { ...pool, week: pool.week.map((d) => filterDay(d, meta, env, length)) };
+  });
+
+  // Ouverture : APRÈS l'élagage des bassins, pour que « Plein air + Maintenant »
+  // exige un bassin extérieur ouvert en ce moment (et pas n'importe lequel).
+  // Les piscines dont la page n'a pas pu être lue (week null) sont écartées :
+  // on ne peut pas garantir qu'elles sont ouvertes.
+  if (open === "all") return pruned;
+  return pruned.filter((pool) => {
+    const today = pool.week?.[0];
+    if (!today || !today.openToday || today.slotsToday.length === 0) return false;
+    // Avant hydratation (now inconnu), « Maintenant » se comporte comme
+    // « Aujourd'hui » — le filtre étant activé au clic, le cas est théorique.
+    if (open === "now" && now !== null) {
+      return today.slotsToday.some((s) => now >= s.start && now < s.end);
+    }
+    return true;
   });
 }
 
@@ -144,6 +184,10 @@ function Chip({
 export function PoolsView({ pools, days }: { pools: PoolStatus[]; days: WeekDayRef[] }) {
   const [envFilter, setEnvFilter] = useState<EnvFilter>("all");
   const [lengthFilter, setLengthFilter] = useState<LengthFilter>("all");
+  const [openFilter, setOpenFilter] = useState<OpenFilter>("all");
+  // Même mécanique que PoolList : null au rendu serveur et à l'hydratation,
+  // puis heure de Toulouse rafraîchie chaque minute.
+  const now = useSyncExternalStore<string | null>(subscribeToMinute, nowInToulouse, () => null);
   const [favOnly, setFavOnly] = useState(false);
   const notif = usePoolNotifications();
   const hasFavorites = notif.favorites.length > 0;
@@ -156,6 +200,8 @@ export function PoolsView({ pools, days }: { pools: PoolStatus[]; days: WeekDayR
     pools,
     envFilter,
     lengthFilter,
+    openFilter,
+    now,
     effectiveFavOnly ? notif.favorites : null
   );
 
@@ -174,7 +220,7 @@ export function PoolsView({ pools, days }: { pools: PoolStatus[]; days: WeekDayR
   return (
     <>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
-        {/* Un groupe de filtres par ligne — les trois se cumulent. */}
+        {/* Un groupe de filtres par ligne — tous se cumulent. */}
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <span className="w-16 shrink-0 text-xs font-medium uppercase tracking-wide text-violet-800/70">
@@ -203,6 +249,23 @@ export function PoolsView({ pools, days }: { pools: PoolStatus[]; days: WeekDayR
                   key={opt.value}
                   selected={lengthFilter === opt.value}
                   onClick={() => setLengthFilter(opt.value)}
+                >
+                  {opt.label}
+                </Chip>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-16 shrink-0 text-xs font-medium uppercase tracking-wide text-violet-800/70">
+              Ouvertes
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {OPEN_OPTIONS.map((opt) => (
+                <Chip
+                  key={opt.value}
+                  selected={openFilter === opt.value}
+                  onClick={() => setOpenFilter(opt.value)}
                 >
                   {opt.label}
                 </Chip>
