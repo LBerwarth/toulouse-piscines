@@ -104,7 +104,7 @@ export function poolUrl(pool: Pool): string {
  * cherchée par nom + « Toulouse » — fiable pour ces équipements municipaux
  * référencés, sans dépendre d'une adresse postale stockée.
  */
-export function poolDirectionsUrl(pool: Pool): string {
+export function poolDirectionsUrl(pool: Pick<Pool, "name">): string {
   const destination = encodeURIComponent(`Piscine ${pool.name} Toulouse`);
   return `https://www.google.com/maps/dir/?api=1&destination=${destination}`;
 }
