@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { getStatusReport } from "@/lib/status";
 
 // Statut « live » minimal par piscine, consommé par l'application sœur
-// piscines-france (https://github.com/…/piscines-france) pour superposer le
-// vrai statut du jour (fermetures estivales comprises) aux horaires OSM.
+// Swimspot pour superposer le vrai statut du jour (fermetures estivales
+// comprises) aux horaires OSM.
 export const revalidate = 0;
 
 export async function GET() {
@@ -27,7 +27,7 @@ export async function GET() {
     { updatedAt: report.updatedAt, pools },
     {
       headers: {
-        // Consommé depuis un autre domaine (piscines-france).
+        // Consommé depuis un autre domaine (Swimspot).
         "Access-Control-Allow-Origin": "*",
         // Le rapport sous-jacent est déjà mis en cache ~30 min côté serveur.
         "Cache-Control": "public, s-maxage=900, stale-while-revalidate=3600",
