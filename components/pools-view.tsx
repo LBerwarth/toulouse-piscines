@@ -205,17 +205,16 @@ export function PoolsView({ pools, days }: { pools: PoolStatus[]; days: WeekDayR
     effectiveFavOnly ? notif.favorites : null
   );
 
-  // Explication des notifications, formulée pour rendre le modèle explicite :
-  // par défaut on est alerté de TOUTES les piscines ; ajouter des ★ restreint
-  // aux favorites, tout enlever revient à toutes les suivre.
+  // La portée (toutes / seulement ★) est un choix explicite (dialogue) — la ★
+  // seule ne change plus les alertes en silence.
   const favCount = notif.favorites.length;
   const notifHint = notif.denied
     ? "Notifications bloquées par le navigateur — autorisez-les dans les réglages pour être alerté·e."
     : notif.subscribed
-      ? favCount > 0
-        ? `🔔 Alertes activées pour vos ${favCount} piscine${favCount > 1 ? "s" : ""} favorite${favCount > 1 ? "s" : ""} ★. Retirez toutes les étoiles pour être de nouveau alerté·e de toutes les piscines.`
-        : "🔔 Alertes activées pour toutes les piscines. Touchez l'étoile ★ d'une ou plusieurs piscines pour ne recevoir que leurs alertes."
-      : "Activez les alertes pour être prévenu·e des fermetures et changements exceptionnels (horaires prolongés, canicule…). Sans ★, vous serez alerté·e de toutes les piscines ; ajoutez des ★ pour ne suivre que les vôtres.";
+      ? notif.scope === "starred" && favCount > 0
+        ? `🔔 Alertes activées pour vos ${favCount} piscine${favCount > 1 ? "s" : ""} favorite${favCount > 1 ? "s" : ""} ★.`
+        : "🔔 Alertes activées pour toutes les piscines."
+      : "Activez les alertes pour être prévenu·e des fermetures et changements exceptionnels (horaires prolongés, canicule…) — pour toutes les piscines ou seulement vos ★, au choix.";
 
   return (
     <>
@@ -308,6 +307,42 @@ export function PoolsView({ pools, days }: { pools: PoolStatus[]; days: WeekDayR
           d'infobulle, c'est ici qu'on explique l'objet des notifications. */}
       {notif.supported && (
         <p className="-mt-2 mb-4 text-xs text-slate-500">{notifHint}</p>
+      )}
+
+      {/* Choix explicite de la portée des alertes, posé une seule fois (dès
+          qu'on est abonné·e ET qu'au moins une ★ existe). */}
+      {notif.scopePrompt && (
+        <div className="-mt-2 mb-4 flex flex-wrap items-center gap-2 rounded-xl bg-violet-50 px-3 py-2">
+          <span className="text-xs font-medium text-violet-900">
+            🔔 Vos alertes : toutes les piscines, ou seulement vos ★ ?
+          </span>
+          <button
+            type="button"
+            onClick={() => notif.chooseScope("starred")}
+            className="rounded-full bg-white px-3 py-1 text-xs font-medium text-violet-800 shadow-sm transition-colors hover:bg-fuchsia-100"
+          >
+            Seulement mes ★
+          </button>
+          <button
+            type="button"
+            onClick={() => notif.chooseScope("all")}
+            className="rounded-full bg-white px-3 py-1 text-xs font-medium text-violet-800 shadow-sm transition-colors hover:bg-fuchsia-100"
+          >
+            Toutes les piscines
+          </button>
+        </div>
+      )}
+
+      {/* iOS dans le navigateur : au lieu de masquer les alertes (PushManager
+          absent hors PWA installée), on explique la marche à suivre. */}
+      {notif.needsInstall && (
+        <p className="-mt-2 mb-4 rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-800">
+          📲 Sur iPhone et iPad, les alertes (fermetures imprévues, canicule…)
+          nécessitent d&apos;installer l&apos;app : touchez{" "}
+          <span className="font-medium">Partager</span> puis{" "}
+          <span className="font-medium">« Sur l&apos;écran d&apos;accueil »</span>, ouvrez
+          l&apos;app installée et activez les alertes ici.
+        </p>
       )}
 
       {filtered.length === 0 ? (

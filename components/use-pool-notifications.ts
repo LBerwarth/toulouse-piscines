@@ -5,6 +5,7 @@ import {
   disablePush,
   enablePush,
   isSubscribed,
+  needsIosInstall,
   pushSupported,
   syncPools,
 } from "@/lib/push-client";
@@ -47,7 +48,7 @@ const favListeners = new Set<() => void>();
 function subscribeFavorites(onChange: () => void): () => void {
   favListeners.add(onChange);
   const onStorage = (e: StorageEvent) => {
-    if (e.key === LS_KEY) onChange();
+    if (e.key === LS_KEY || e.key === SCOPE_KEY) onChange();
   };
   window.addEventListener("storage", onStorage);
   return () => {
@@ -69,20 +70,57 @@ function writeFavorites(next: string[]): void {
 
 const favoritesServerSnapshot = () => EMPTY_FAVORITES;
 
+// Portée des alertes, choisie EXPLICITEMENT par l'utilisateur (dialogue) :
+// « starred » = seulement les piscines ★, « all » = toutes, null = jamais
+// choisi (traité comme « toutes »). Avant, poser une ★ restreignait la portée
+// en silence — surprise garantie pour qui épingle juste une piscine en tête.
+export type NotifScope = "all" | "starred";
+const SCOPE_KEY = "piscines:notif-scope";
+
+function readScope(): NotifScope | null {
+  try {
+    const raw = localStorage.getItem(SCOPE_KEY);
+    return raw === "all" || raw === "starred" ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeScope(next: NotifScope | null): void {
+  try {
+    if (next === null) localStorage.removeItem(SCOPE_KEY);
+    else localStorage.setItem(SCOPE_KEY, next);
+  } catch {
+    /* ignore */
+  }
+  favListeners.forEach((l) => l());
+}
+
+const scopeServerSnapshot = () => null;
+
 export interface PoolNotifications {
   favorites: string[];
   toggleFavorite: (slug: string) => void;
   isFavorite: (slug: string) => boolean;
   supported: boolean;
+  /** iOS dans le navigateur : push possible seulement après ajout à l'écran d'accueil */
+  needsInstall: boolean;
   subscribed: boolean;
   busy: boolean;
   denied: boolean;
   toggleNotifications: () => void;
+  /** Portée choisie des alertes (null = pas encore choisie, vaut « toutes ») */
+  scope: NotifScope | null;
+  /** Afficher le dialogue « toutes ou seulement vos ★ ? » */
+  scopePrompt: boolean;
+  chooseScope: (scope: NotifScope) => void;
 }
 
 export function usePoolNotifications(): PoolNotifications {
   const favorites = useSyncExternalStore(subscribeFavorites, readFavorites, favoritesServerSnapshot);
   const supported = useSyncExternalStore(noopSubscribe, pushSupported, supportedServerSnapshot);
+  const needsInstall = useSyncExternalStore(noopSubscribe, needsIosInstall, supportedServerSnapshot);
+  const scope = useSyncExternalStore(subscribeFavorites, readScope, scopeServerSnapshot);
   const [subscribed, setSubscribed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [denied, setDenied] = useState(false);
@@ -96,10 +134,25 @@ export function usePoolNotifications(): PoolNotifications {
       const prev = readFavorites();
       const next = prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug];
       writeFavorites(next);
-      if (subscribed) syncPools(next);
+      // La ★ ne change plus la portée des alertes en silence : le serveur n'est
+      // synchronisé que si l'utilisateur a explicitement choisi « seulement ★ ».
+      if (!subscribed || scope !== "starred") return;
+      if (next.length === 0) {
+        // Plus aucune ★ : « pools vide » signifierait « toutes » côté serveur —
+        // on efface le choix et on reposera la question à la prochaine ★.
+        writeScope(null);
+        syncPools([]);
+      } else {
+        syncPools(next);
+      }
     },
-    [subscribed]
+    [subscribed, scope]
   );
+
+  const chooseScope = useCallback((next: NotifScope) => {
+    writeScope(next);
+    syncPools(next === "starred" ? readFavorites() : []);
+  }, []);
 
   const isFavorite = useCallback((slug: string) => favorites.includes(slug), [favorites]);
 
@@ -111,7 +164,7 @@ export function usePoolNotifications(): PoolNotifications {
           await disablePush();
           setSubscribed(false);
         } else {
-          const r = await enablePush(favorites);
+          const r = await enablePush(scope === "starred" ? favorites : []);
           if (r === "ok") {
             setSubscribed(true);
             setDenied(false);
@@ -123,16 +176,20 @@ export function usePoolNotifications(): PoolNotifications {
         setBusy(false);
       }
     })();
-  }, [subscribed, favorites]);
+  }, [subscribed, favorites, scope]);
 
   return {
     favorites,
     toggleFavorite,
     isFavorite,
     supported,
+    needsInstall,
     subscribed,
     busy,
     denied,
     toggleNotifications,
+    scope,
+    scopePrompt: subscribed && favorites.length > 0 && scope === null,
+    chooseScope,
   };
 }

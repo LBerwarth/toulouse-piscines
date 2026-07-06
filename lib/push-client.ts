@@ -18,6 +18,21 @@ export function pushSupported(): boolean {
   );
 }
 
+/** iPhone/iPad dans un navigateur (non installé) : Web Push exige l'ajout à
+ *  l'écran d'accueil (iOS ≥ 16.4) — on guide alors l'utilisateur au lieu de
+ *  masquer silencieusement la fonctionnalité. */
+export function needsIosInstall(): boolean {
+  if (typeof window === "undefined" || pushSupported()) return false;
+  const ios =
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    // iPadOS se présente comme un Mac, mais un Mac n'a pas d'écran tactile
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const standalone =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  return ios && !standalone;
+}
+
 export async function currentPermission(): Promise<NotificationPermission> {
   return typeof Notification !== "undefined" ? Notification.permission : "denied";
 }

@@ -183,11 +183,11 @@ function PoolCard({
               type="button"
               onClick={() => onToggleFavorite(pool.slug)}
               aria-pressed={isFavorite}
-              aria-label={isFavorite ? "Retirer des favoris" : "Suivre cette piscine"}
+              aria-label={isFavorite ? "Retirer des favoris" : "Ajouter aux favoris"}
               title={
                 isFavorite
-                  ? "Suivie — alertes activées pour cette piscine"
-                  : "Suivre pour être alerté·e (fermetures, changements d'horaires…)"
+                  ? "Favorite — en tête de liste"
+                  : "Ajouter aux favoris : en tête de liste, et ciblage possible des alertes"
               }
               className={`-ml-0.5 shrink-0 text-lg leading-none transition-colors ${
                 isFavorite ? "text-amber-400" : "text-slate-300 hover:text-amber-300"
