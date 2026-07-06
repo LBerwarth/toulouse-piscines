@@ -1,0 +1,26 @@
+name: Contrôle quotidien des données
+
+# Vérifie une fois par jour que les données servies sont saines : cache
+# alimenté par le cron, assez de piscines exploitables, parseur confiant,
+# pas de piscine « fermée 7 j sans raison » (signe d'une dérive silencieuse
+# du parseur). Réponse non-200 → le job échoue → GitHub prévient par e-mail.
+# Un seul passage quotidien = au plus une alerte par jour, pas de spam si la
+# source tombe en panne un week-end.
+
+on:
+  schedule:
+    - cron: "37 8 * * *" # tous les jours à 08:37 UTC (matinée à Toulouse)
+  workflow_dispatch: {} # déclenchement manuel possible
+
+jobs:
+  sanity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Appeler l'endpoint de contrôle
+        run: |
+          code=$(curl -s -o /tmp/out.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            https://toulouse-piscines.vercel.app/api/cron/sanity)
+          echo "HTTP $code"
+          cat /tmp/out.json
+          test "$code" = "200"
