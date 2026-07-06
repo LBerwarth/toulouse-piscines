@@ -8,7 +8,8 @@ let configured = false;
 function configure() {
   if (configured) return;
   webpush.setVapidDetails(
-    process.env.VAPID_SUBJECT || "mailto:lena.berw@gmail.com",
+    // Sujet VAPID : URL du site par défaut (pas d'adresse personnelle en dur).
+    process.env.VAPID_SUBJECT || "https://toulouse-piscines.vercel.app",
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
     process.env.VAPID_PRIVATE_KEY!
   );
