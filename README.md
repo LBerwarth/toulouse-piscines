@@ -8,7 +8,7 @@ Application web mobile-first (installable comme PWA), construite avec Next.js. *
 
 Il n'existe **aucune API officielle** pour les horaires et fermetures : le jeu de données open data « Piscines » de Toulouse Métropole ne contient que des informations statiques (adresse, accessibilité). La source de vérité est la page de chaque piscine sur `metropole.toulouse.fr/annuaire/piscine-*`.
 
-Le pipeline, exécuté côté serveur et mis en cache 30 minutes dans un magasin partagé (Supabase) :
+Le pipeline, exécuté côté serveur par le cron horaire (GitHub Actions → `/api/cron/check-closures`), qui écrit le résultat dans un cache partagé (Supabase) servi tel quel aux visiteurs :
 
 1. **Scraping** (`lib/scrape.ts`) — les 12 pages sont récupérées et les sections utiles extraites du HTML Drupal (chapeau, accordéons « Horaires » avec leur structure titres/lignes, encarts d'alerte) avec cheerio.
 2. **Analyse déterministe** (`lib/parse-schedule.ts`) — un parseur en français pur (regex, sans LLM) lit les périodes (« du 5 juin au 5 juillet », « à compter du… », « période scolaire »), les jours (« du lundi au vendredi », « le dimanche ») et les créneaux (« de 9h30 à 20h30 », « 12h - 19h »), choisit la période qui contient la date du jour et en déduit : ouverte/fermée, créneaux, alertes. Les fermetures exceptionnelles repérées dans le chapeau ou les encarts priment sur les horaires.
@@ -38,10 +38,10 @@ Si la mairie change de formulation et qu'une piscine s'affiche mal, ajouter le n
 
 1. Pousser ce dépôt sur GitHub.
 2. Importer le projet sur [vercel.com](https://vercel.com) — aucune variable d'environnement à configurer.
-3. Déployer. Le plan Hobby suffit : pas de cron, la page est rendue à la demande et relit à chaque visite un cache partagé (table `status_cache`, cf. `db/status_cache.sql`), rescanné au plus toutes les 30 min. Le visiteur qui déclenche le rafraîchissement voit donc tout de suite la nouvelle date, sans recharger. Sans Supabase, repli automatique sur un scraping direct mis en cache 30 min (sans cache partagé).
+3. Déployer. Le plan Hobby suffit : le cron tourne sur GitHub Actions (`.github/workflows/check-closures.yml`), scrape les pages, alimente le cache partagé (table `status_cache`, cf. `db/status_cache.sql`) et envoie les notifications. La page ne fait que lire ce cache — un seul scraper à cadence connue face à la mairie, quel que soit le trafic. Filet de sécurité : si le cron est muet depuis plus de 10 h (il ne tourne pas la nuit), le visiteur redéclenche un rescan comme avant. Sans Supabase, repli automatique sur un scraping direct mis en cache 30 min (sans cache partagé).
 
 ## Limites connues
 
 - Le parseur est déterministe : si la mairie publie une formulation inédite, la piscine concernée passe en « information incertaine » ou « horaires non reconnus » — les horaires bruts restent visibles. Corriger via un test + une règle.
 - Si la mairie publie une fermeture sans mettre à jour la page de la piscine (ex. seulement sur les réseaux sociaux), l'app ne peut pas la voir.
-- Fraîcheur maximale : 30 minutes (réglable via `TTL_MS` dans `lib/status.ts`).
+- Fraîcheur maximale : l'intervalle du cron (`.github/workflows/check-closures.yml`).

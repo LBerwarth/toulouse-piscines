@@ -2,9 +2,9 @@ import { getStatusReport } from "@/lib/status";
 import { PoolsView } from "@/components/pools-view";
 import { StaleBanner } from "@/components/stale-banner";
 
-// Rendu dynamique : on relit à chaque visite le cache partagé (Supabase), qui
-// rescanne les pages au plus toutes les 30 min. Le visiteur qui déclenche le
-// rafraîchissement voit donc tout de suite la nouvelle date, sans recharger.
+// Rendu dynamique : on relit à chaque visite le cache partagé (Supabase),
+// alimenté par le cron (15 min en journée, pause la nuit — cf. lib/status.ts).
+// La page ne scrape pas elle-même, sauf filet de sécurité (cron muet > 10 h).
 // (revalidate = 0 garde malgré tout en cache les fetch à revalidation positive,
 //  comme le calendrier scolaire mis en cache 24 h.)
 export const revalidate = 0;

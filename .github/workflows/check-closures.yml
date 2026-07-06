@@ -1,13 +1,20 @@
 name: Vérifier les fermetures de piscines
 
-# Appelle l'endpoint qui scrute les pages de la mairie et envoie une
-# notification push quand une fermeture exceptionnelle apparaît.
+# Appelle l'endpoint qui scrute les pages de la mairie, alimente le cache
+# partagé servi aux visiteurs et envoie une notification push quand une
+# fermeture exceptionnelle apparaît.
 # (Cron externe via GitHub Actions : pas soumis aux limites de fréquence
-#  des cron Vercel du plan Hobby.)
+#  des cron Vercel du plan Hobby ; gratuit, le dépôt étant public.)
 
 on:
   schedule:
-    - cron: "7 * * * *" # toutes les heures, à HH:07
+    # Heures en UTC (Toulouse = UTC+1/+2, plages calées sur l'heure d'été).
+    # Tous les quarts d'heure en journée (~6 h – 21 h à Toulouse) — fraîcheur
+    # des horaires ET latence des notifications — puis un dernier passage vers
+    # 21 h et RIEN la nuit : la mairie ne publie pas la nuit, et la page sert
+    # le cache jusqu'à 10 h d'âge (cf. lib/status.ts) sans rescanner.
+    - cron: "7,22,37,52 4-18 * * *"
+    - cron: "7 19 * * *" # dernier passage (~21 h 07 à Toulouse l'été)
   workflow_dispatch: {} # déclenchement manuel possible
 
 jobs:

@@ -69,9 +69,11 @@ async function getPoolStatus(pool: Pool, week: TodayInfo[], fresh: boolean): Pro
   }
 }
 
-/** Délai au-delà duquel les données sont rescannées (aligné sur la publication
- *  des fermetures par la mairie). */
-const TTL_MS = 1800_000; // 30 min
+/** Au-delà de cet âge, le cache est considéré abandonné (cron GitHub Actions
+ *  muet) : la page reprend alors elle-même le rescan, comme avant le cron.
+ *  10 h : le cron ne tourne pas la nuit (~21 h → 6 h, soit 9 h de pause) —
+ *  servir le cache du soir tel quel est voulu, la mairie ne publie pas la nuit. */
+const CACHE_ABANDONED_MS = 36_000_000; // 10 h
 
 /**
  * Version du schéma du rapport mis en cache. À incrémenter dès que la forme des
@@ -124,7 +126,7 @@ async function buildReport(fresh: boolean): Promise<StatusReport> {
 // Ligne unique partagée par toutes les instances : sert de cache + de minuteur.
 const CACHE_ROW_ID = 1;
 
-async function readCachedReport(): Promise<{ report: StatusReport; fetchedAt: number } | null> {
+export async function readCachedReport(): Promise<{ report: StatusReport; fetchedAt: number } | null> {
   const { data, error } = await db()
     .from("status_cache")
     .select("report,fetched_at")
@@ -150,8 +152,10 @@ async function writeCachedReport(report: StatusReport): Promise<void> {
 
 /**
  * Repousse le minuteur (`fetched_at`) sans toucher au rapport conservé : utilisé
- * quand un rescan échoue, pour garder le dernier bon rapport (son `updatedAt`,
- * donc son âge réel) tout en évitant de re-tenter la source en panne avant TTL.
+ * quand le rescan de secours échoue, pour garder le dernier bon rapport (son
+ * `updatedAt`, donc son âge réel) sans re-tenter la source en panne à chaque
+ * visite (prochaine tentative côté page dans CACHE_ABANDONED_MS ; le cron, lui,
+ * retente à chaque passage).
  */
 async function touchCacheTimer(fetchedAt: string): Promise<void> {
   const { error } = await db()
@@ -168,25 +172,48 @@ async function touchCacheTimer(fetchedAt: string): Promise<void> {
  * ou un blob déjà mis en cache « à vide » par une ancienne version compte alors
  * pour zéro — on évite de servir ou d'écrire un rapport sans aucun horaire.
  */
-function usablePoolCount(report: StatusReport): number {
+export function usablePoolCount(report: StatusReport): number {
   return report.pools.filter(
     (p) => p.ok && p.week !== null && p.raw !== null && p.raw.sections.length > 0
   ).length;
 }
 
 /**
- * Rapport d'état, mis en cache 30 min dans un magasin partagé (Supabase) avec
- * son horodatage réel de scraping. Ainsi le premier visiteur d'une fenêtre de
- * 30 min déclenche ET voit le rafraîchissement (pas de rechargement manuel), et
- * la date « Mis à jour » correspond toujours à l'âge réel des données affichées.
+ * Rescan complet + écriture du cache partagé — appelé par le cron (qui scrape
+ * de toute façon les pages en direct). Le rapport n'est écrit que s'il porte
+ * réellement des horaires : un rescan vide (maintenance de la source) n'écrase
+ * jamais le dernier bon cache. Renvoie le rapport frais tel quel — l'appelant
+ * (cron) n'y trouvera alors que des piscines en erreur, donc rien à notifier.
+ */
+export async function refreshStatusReport(): Promise<StatusReport> {
+  const fresh = await buildReport(true);
+  if (isConfigured() && usablePoolCount(fresh) > 0) {
+    try {
+      await writeCachedReport(fresh);
+    } catch {
+      // Écriture best-effort : le prochain passage du cron retentera.
+    }
+  }
+  return fresh;
+}
+
+/**
+ * Rapport d'état servi aux visiteurs : lecture SEULE du cache partagé
+ * (Supabase), alimenté par le cron toutes les heures (refreshStatusReport).
+ * La page ne scrape jamais elle-même tant que le cron est vivant — un seul
+ * scraper à cadence connue face à la mairie, pas d'emballement quand beaucoup
+ * de visiteurs arrivent en même temps, et un TTFB constant.
+ *
+ * Filet de sécurité : cache absent ou muet depuis > 2 h (cron GitHub Actions
+ * en panne) — l'ancien comportement reprend, le visiteur déclenche le rescan.
  *
  * Sans Supabase (dev local) ou s'il est injoignable : repli sur un scraping
  * direct mis en cache 30 min par le Data Cache de Next.
  *
- * Si un rescan échoue totalement (toutes les pages en erreur — typiquement une
- * maintenance de la source), on NE remplace PAS le cache : on continue de servir
- * le dernier bon rapport (avec son âge réel), et un bandeau côté client signale
- * que les horaires peuvent être périmés. L'application reste ainsi utilisable.
+ * Si un rescan de secours échoue totalement (toutes les pages en erreur —
+ * typiquement une maintenance de la source), on NE remplace PAS le cache : on
+ * continue de servir le dernier bon rapport (avec son âge réel), et un bandeau
+ * côté client signale que les horaires peuvent être périmés.
  */
 export async function getStatusReport(): Promise<StatusReport> {
   if (!isConfigured()) return buildReport(false);
@@ -208,7 +235,7 @@ export async function getStatusReport(): Promise<StatusReport> {
       usablePoolCount(cached.report) > 0
         ? cached
         : null;
-    if (lastGood && Date.now() - lastGood.fetchedAt < TTL_MS) {
+    if (lastGood && Date.now() - lastGood.fetchedAt < CACHE_ABANDONED_MS) {
       return lastGood.report;
     }
 
@@ -237,7 +264,7 @@ export async function getStatusReport(): Promise<StatusReport> {
     );
 
     // On conserve le dernier bon rapport et on repousse la prochaine tentative
-    // de TTL_MS (pour ne pas marteler une source en panne à chaque visite).
+    // côté page (pour ne pas marteler une source en panne à chaque visite).
     if (lastGood) {
       try {
         await touchCacheTimer(new Date().toISOString());
