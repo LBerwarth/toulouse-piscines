@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { POOLS, poolUrl, type Pool, type PoolEnv } from "./pools";
 import { fetchPoolPage, type SectionLine } from "./scrape";
 import { analyzeDay, type DayStatus } from "./parse-schedule";
@@ -69,11 +70,39 @@ async function getPoolStatus(pool: Pool, week: TodayInfo[], fresh: boolean): Pro
   }
 }
 
-/** Au-delà de cet âge, le cache est considéré abandonné (cron GitHub Actions
- *  muet) : la page reprend alors elle-même le rescan, comme avant le cron.
- *  10 h : le cron ne tourne pas la nuit (~21 h → 6 h, soit 9 h de pause) —
- *  servir le cache du soir tel quel est voulu, la mairie ne publie pas la nuit. */
-const CACHE_ABANDONED_MS = 36_000_000; // 10 h
+/**
+ * Cron actif ~6 h–22 h à Toulouse (cf. .github/workflows/check-closures.yml) ;
+ * pause la nuit. En journée, au-delà de cet âge le cache est jugé en retard
+ * (passage du cron sauté — ses `schedule` sont « best effort ») et la page
+ * relance elle-même un rescan de secours. Choisi SOUS le seuil du bandeau
+ * « périmé » (StaleBanner, 45 min) pour qu'un simple retard du cron ne
+ * l'affiche jamais : il ne paraît que si le rescan échoue vraiment (source
+ * réellement en panne).
+ */
+const CACHE_STALE_DAYTIME_MS = 35 * 60_000; // 35 min
+
+/**
+ * La nuit (cron en pause, ~22 h–6 h), la mairie ne publie pas : on sert le cache
+ * du soir tel quel jusqu'à cet âge sans rescanner. Au-delà, le cron est
+ * vraisemblablement mort et la page reprend le rescan.
+ */
+const CACHE_ABANDONED_NIGHT_MS = 36_000_000; // 10 h
+
+/** Heure locale à Toulouse (0–23). Le serveur peut tourner en UTC. */
+function toulouseHour(): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Paris",
+    hour: "numeric",
+    hour12: false,
+  }).formatToParts(new Date());
+  const h = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+  return h === 24 ? 0 : h; // certains moteurs rendent minuit « 24 »
+}
+
+/** Le cron de jour tourne-t-il à cette heure locale ? (fenêtre large été/hiver.) */
+function cronActive(hour: number): boolean {
+  return hour >= 6 && hour < 22;
+}
 
 /**
  * Version du schéma du rapport mis en cache. À incrémenter dès que la forme des
@@ -126,7 +155,9 @@ async function buildReport(fresh: boolean): Promise<StatusReport> {
 // Ligne unique partagée par toutes les instances : sert de cache + de minuteur.
 const CACHE_ROW_ID = 1;
 
-export async function readCachedReport(): Promise<{ report: StatusReport; fetchedAt: number } | null> {
+export async function readCachedReport(): Promise<
+  { report: StatusReport; fetchedAt: number; fetchedAtRaw: string } | null
+> {
   const { data, error } = await db()
     .from("status_cache")
     .select("report,fetched_at")
@@ -137,6 +168,7 @@ export async function readCachedReport(): Promise<{ report: StatusReport; fetche
   return {
     report: data.report as StatusReport,
     fetchedAt: new Date(data.fetched_at as string).getTime(),
+    fetchedAtRaw: data.fetched_at as string,
   };
 }
 
@@ -151,18 +183,51 @@ async function writeCachedReport(report: StatusReport): Promise<void> {
 }
 
 /**
- * Repousse le minuteur (`fetched_at`) sans toucher au rapport conservé : utilisé
- * quand le rescan de secours échoue, pour garder le dernier bon rapport (son
- * `updatedAt`, donc son âge réel) sans re-tenter la source en panne à chaque
- * visite (prochaine tentative côté page dans CACHE_ABANDONED_MS ; le cron, lui,
- * retente à chaque passage).
+ * Réserve le rescan de secours déclenché par la page : avance `fetched_at` à
+ * maintenant SI la valeur observée n'a pas changé (compare-and-swap côté
+ * Postgres). Une seule requête gagne le verrou, les visiteurs simultanés
+ * servent le cache tel quel — indispensable à fort trafic : un cache périmé ne
+ * doit pas déclencher un rescan par visite (rafale d'IP datacenter → anti-bot
+ * de la source). Avancer `fetched_at` sert aussi de backoff : la tentative
+ * suivante n'aura lieu qu'après le même délai, que ce rescan réussisse ou non.
  */
-async function touchCacheTimer(fetchedAt: string): Promise<void> {
-  const { error } = await db()
+async function claimRefresh(observedFetchedAt: string): Promise<boolean> {
+  const { data, error } = await db()
     .from("status_cache")
-    .update({ fetched_at: fetchedAt })
-    .eq("id", CACHE_ROW_ID);
+    .update({ fetched_at: new Date().toISOString() })
+    .eq("id", CACHE_ROW_ID)
+    .eq("fetched_at", observedFetchedAt)
+    .select("id");
   if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
+
+/**
+ * Rescan de secours exécuté après l'envoi de la page (next/after), une fois le
+ * verrou obtenu (claimRefresh). Réécrit le cache si le scan porte des horaires ;
+ * sinon on garde le dernier bon rapport — son `updatedAt` vieillit, ce qui finit
+ * par afficher le bandeau « périmé » si la source reste vraiment en panne.
+ */
+async function backgroundRefresh(): Promise<void> {
+  try {
+    const fresh = await buildReport(true);
+    if (usablePoolCount(fresh) > 0) {
+      await writeCachedReport(fresh);
+      return;
+    }
+    console.error(
+      "[status] rescan page sans piscine exploitable :",
+      fresh.pools
+        .map((p) =>
+          p.ok
+            ? `${p.slug}: ok sections=${p.raw?.sections.length ?? 0}`
+            : `${p.slug}: KO ${p.error}`
+        )
+        .join(" | ")
+    );
+  } catch (err) {
+    console.error("[status] rescan page échoué :", err instanceof Error ? err.message : err);
+  }
 }
 
 /**
@@ -198,22 +263,24 @@ export async function refreshStatusReport(): Promise<StatusReport> {
 }
 
 /**
- * Rapport d'état servi aux visiteurs : lecture SEULE du cache partagé
- * (Supabase), alimenté par le cron toutes les heures (refreshStatusReport).
- * La page ne scrape jamais elle-même tant que le cron est vivant — un seul
- * scraper à cadence connue face à la mairie, pas d'emballement quand beaucoup
- * de visiteurs arrivent en même temps, et un TTFB constant.
+ * Rapport d'état servi aux visiteurs : lecture du cache partagé (Supabase),
+ * alimenté par le cron ~15 min en journée (refreshStatusReport). La page ne
+ * scrape pas elle-même tant que le cache est frais — un seul scraper à cadence
+ * connue face à la mairie, TTFB constant même sous forte affluence.
  *
- * Filet de sécurité : cache absent ou muet depuis > 2 h (cron GitHub Actions
- * en panne) — l'ancien comportement reprend, le visiteur déclenche le rescan.
+ * Auto-guérison : les `schedule` GitHub Actions sont « best effort » (la cadence
+ * 15 min tombe souvent à 1–3 h). Si le cache dépasse l'âge toléré en journée
+ * (cron en retard), la page se resynchronise SANS bloquer la réponse : un seul
+ * visiteur obtient le verrou (claimRefresh), rescanne après l'envoi de la page
+ * (next/after) et réécrit le cache ; tous servent le dernier bon rapport en
+ * attendant. Le seuil de jour est sous celui du bandeau « périmé » : un simple
+ * retard du cron ne l'affiche jamais.
+ *
+ * La nuit (cron en pause), on sert le cache du soir tel quel jusqu'à 10 h d'âge
+ * sans rescanner : la mairie ne publie pas la nuit.
  *
  * Sans Supabase (dev local) ou s'il est injoignable : repli sur un scraping
  * direct mis en cache 30 min par le Data Cache de Next.
- *
- * Si un rescan de secours échoue totalement (toutes les pages en erreur —
- * typiquement une maintenance de la source), on NE remplace PAS le cache : on
- * continue de servir le dernier bon rapport (avec son âge réel), et un bandeau
- * côté client signale que les horaires peuvent être périmés.
  */
 export async function getStatusReport(): Promise<StatusReport> {
   if (!isConfigured()) return buildReport(false);
@@ -226,55 +293,42 @@ export async function getStatusReport(): Promise<StatusReport> {
   try {
     const cached = await readCachedReport();
     // « Dernier bon rapport » = bon schéma ET réellement porteur d'horaires. Un
-    // blob d'une autre version (ancien déploiement) ou vidé par le bug de la
-    // page de maintenance servie en 200 (toutes les piscines sans section) ne
-    // doit pas être servi comme référence : on l'ignore.
+    // blob d'une autre version (ancien déploiement) ou vidé par une page de
+    // maintenance servie en 200 (toutes les piscines sans section) ne doit pas
+    // servir de référence : on l'ignore.
     const lastGood =
       cached &&
       cached.report.version === CACHE_SCHEMA_VERSION &&
       usablePoolCount(cached.report) > 0
         ? cached
         : null;
-    if (lastGood && Date.now() - lastGood.fetchedAt < CACHE_ABANDONED_MS) {
+
+    if (lastGood) {
+      const maxAgeMs = cronActive(toulouseHour())
+        ? CACHE_STALE_DAYTIME_MS
+        : CACHE_ABANDONED_NIGHT_MS;
+      if (Date.now() - lastGood.fetchedAt < maxAgeMs) return lastGood.report;
+
+      // Périmé (cron en retard) : rescan de secours en tâche de fond, verrouillé
+      // pour qu'un seul visiteur le déclenche. On sert le dernier bon rapport.
+      try {
+        if (await claimRefresh(lastGood.fetchedAtRaw)) after(backgroundRefresh);
+      } catch {
+        // Verrou best-effort : sans lui (Supabase KO) on sert quand même le cache.
+      }
       return lastGood.report;
     }
 
+    // Aucun bon rapport en cache (premier démarrage / cache corrompu) : rien à
+    // servir, on scrape en direct.
     const fresh = await buildReport(true);
     if (usablePoolCount(fresh) > 0) {
       try {
         await writeCachedReport(fresh);
       } catch {
-        // Écriture du cache best-effort : on renvoie quand même les données fraîches.
+        // Écriture best-effort : on renvoie quand même les données fraîches.
       }
-      return fresh;
     }
-
-    // Échec total du rescan (source indisponible). On journalise le détail par
-    // piscine — visible dans les logs Vercel — pour distinguer un vrai incident
-    // source (HTTP 403, page de maintenance, timeout) d'un souci de parseur.
-    console.error(
-      "[status] rescan sans piscine exploitable, repli sur le dernier bon rapport :",
-      fresh.pools
-        .map((p) =>
-          p.ok
-            ? `${p.slug}: ok sections=${p.raw?.sections.length ?? 0}`
-            : `${p.slug}: KO ${p.error}`
-        )
-        .join(" | ")
-    );
-
-    // On conserve le dernier bon rapport et on repousse la prochaine tentative
-    // côté page (pour ne pas marteler une source en panne à chaque visite).
-    if (lastGood) {
-      try {
-        await touchCacheTimer(new Date().toISOString());
-      } catch {
-        // best-effort
-      }
-      return lastGood.report;
-    }
-
-    // Aucun bon rapport en cache (premier démarrage) : on renvoie l'échec tel quel.
     return fresh;
   } catch {
     // Supabase injoignable / table absente : on sert des données fraîches sans cache partagé.

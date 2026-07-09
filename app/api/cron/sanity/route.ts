@@ -31,9 +31,12 @@ export async function GET(req: Request) {
     if (!cached) {
       problems.push("aucun rapport en cache");
     } else {
-      const ageMin = Math.round((Date.now() - cached.fetchedAt) / 60_000);
+      // Âge réel des données servies (report.updatedAt), et non le minuteur
+      // `fetched_at` : ce dernier est avancé à chaque tentative de rescan (cron
+      // ou page) même en échec, et masquerait une source figée.
+      const ageMin = Math.round((Date.now() - new Date(cached.report.updatedAt).getTime()) / 60_000);
       if (ageMin * 60_000 > MAX_CACHE_AGE_MS) {
-        problems.push(`cache muet depuis ${ageMin} min — cron en panne ?`);
+        problems.push(`données figées depuis ${ageMin} min — cron et rescan de secours muets ?`);
       }
 
       const usable = usablePoolCount(cached.report);

@@ -2,8 +2,9 @@
 -- À exécuter une fois dans l'éditeur SQL Supabase.
 --
 -- Sert à la fois de cache et de minuteur : la page lit cette ligne à chaque
--- visite et ne rescrape les pages de la mairie que si `fetched_at` date de plus
--- de 30 minutes. `report` contient le StatusReport complet (cf. lib/status.ts).
+-- visite et ne relance un rescan de secours (verrouillé) que si `fetched_at`
+-- dépasse le seuil de fraîcheur (35 min en journée, 10 h la nuit — cf.
+-- lib/status.ts). `report` contient le StatusReport complet.
 --
 -- `fetched_at` est l'horodatage de la dernière TENTATIVE de scraping (minuteur).
 -- En fonctionnement normal il coïncide avec `report.updatedAt` (l'âge réel des
