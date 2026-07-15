@@ -49,3 +49,6 @@ ig-story.*
 /memory/
 courrier-*.md
 /s[0-9].png
+
+# copie locale avec le vrai CRON_SECRET — ne jamais committer
+db/cron_scrape_filled.sql
