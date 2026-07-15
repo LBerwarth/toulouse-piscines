@@ -71,9 +71,9 @@ async function getPoolStatus(pool: Pool, week: TodayInfo[], fresh: boolean): Pro
 }
 
 /**
- * Cron actif ~7 h–19 h à Toulouse (cf. .github/workflows/check-closures.yml) ;
- * pause le soir et la nuit. En journée, au-delà de cet âge le cache est jugé en retard
- * (passage du cron sauté — ses `schedule` sont « best effort ») et la page
+ * Cron actif ~7 h–19 h à Toulouse (pg_cron Supabase, cf. db/cron_scrape.sql) ;
+ * pause le soir et la nuit. En journée, au-delà de cet âge le cache est jugé en
+ * retard (passage du cron manqué) et la page
  * relance elle-même un rescan de secours. Choisi SOUS le seuil du bandeau
  * « périmé » (StaleBanner, 45 min) pour qu'un simple retard du cron ne
  * l'affiche jamais : il ne paraît que si le rescan échoue vraiment (source
@@ -268,9 +268,9 @@ export async function refreshStatusReport(): Promise<StatusReport> {
  * scrape pas elle-même tant que le cache est frais — un seul scraper à cadence
  * connue face à la mairie, TTFB constant même sous forte affluence.
  *
- * Auto-guérison : les `schedule` GitHub Actions sont « best effort » (la cadence
- * 15 min tombe souvent à 1–3 h). Si le cache dépasse l'âge toléré en journée
- * (cron en retard), la page se resynchronise SANS bloquer la réponse : un seul
+ * Auto-guérison : si le cache dépasse l'âge toléré en journée (passage du cron
+ * pg_cron manqué — Supabase en incident, par ex.), la page se resynchronise
+ * SANS bloquer la réponse : un seul
  * visiteur obtient le verrou (claimRefresh), rescanne après l'envoi de la page
  * (next/after) et réécrit le cache ; tous servent le dernier bon rapport en
  * attendant. Le seuil de jour est sous celui du bandeau « périmé » : un simple

@@ -25,10 +25,10 @@ function toulouseMinutes(nowMs: number): number {
 
 /**
  * Âge toléré avant le bandeau. Le cron est en pause de ~19 h à ~7 h (cf.
- * check-closures.yml) : le soir et la nuit, le cache du soir est NORMALEMENT
+ * db/cron_scrape.sql) : le soir et la nuit, le cache du soir est NORMALEMENT
  * vieux — la tolérance suit le temps écoulé depuis 19 h, plus la marge de jour.
- * La journée reprend à 8 h (et non 7 h) : le temps que les premiers passages
- * du matin, « best effort » côté GitHub, aient réellement réécrit le cache.
+ * La journée reprend à 8 h (et non 7 h) : marge pour que le premier passage
+ * du matin ait réellement réécrit le cache (dérive été/hiver comprise).
  */
 function staleAfterMs(nowMs: number): number {
   const m = toulouseMinutes(nowMs);
