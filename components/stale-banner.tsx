@@ -3,12 +3,39 @@
 import { useSyncExternalStore } from "react";
 
 /**
- * Au-delà de ce délai, les horaires affichés sont considérés comme potentiellement
- * périmés. Le cache est rafraîchi au plus toutes les 30 min (cf. TTL_MS) : un âge
- * supérieur signifie qu'un rafraîchissement a échoué (source indisponible). La
- * marge évite tout faux positif sur des données simplement « en fin de fenêtre ».
+ * Délai de jour au-delà duquel les horaires affichés sont jugés potentiellement
+ * périmés. Le cron rafraîchit ~15 min entre 7 h et 19 h : un âge supérieur
+ * signifie que les rafraîchissements échouent (source indisponible). La marge
+ * évite tout faux positif sur des données simplement « en fin de fenêtre ».
  */
 const STALE_AFTER_MS = 45 * 60_000;
+
+/** Minute locale à Toulouse (0–1439). L'appareil peut être sur un autre fuseau. */
+function toulouseMinutes(nowMs: number): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Paris",
+    hour: "numeric",
+    minute: "numeric",
+    hour12: false,
+  }).formatToParts(new Date(nowMs));
+  const h = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+  const m = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+  return (h === 24 ? 0 : h) * 60 + m;
+}
+
+/**
+ * Âge toléré avant le bandeau. Le cron est en pause de ~19 h à ~7 h (cf.
+ * check-closures.yml) : le soir et la nuit, le cache du soir est NORMALEMENT
+ * vieux — la tolérance suit le temps écoulé depuis 19 h, plus la marge de jour.
+ * La journée reprend à 8 h (et non 7 h) : le temps que les premiers passages
+ * du matin, « best effort » côté GitHub, aient réellement réécrit le cache.
+ */
+function staleAfterMs(nowMs: number): number {
+  const m = toulouseMinutes(nowMs);
+  if (m >= 8 * 60 && m < 19 * 60) return STALE_AFTER_MS;
+  const sinceStop = m >= 19 * 60 ? m - 19 * 60 : m + 5 * 60;
+  return sinceStop * 60_000 + STALE_AFTER_MS;
+}
 
 // Store externe : notifie au changement d'état réseau et chaque minute (pour
 // réévaluer l'ancienneté tant que l'onglet reste ouvert).
@@ -58,7 +85,8 @@ export function StaleBanner({
   // d'appel direct à Date.now() ici).
   const [online, minute] = snapshot.split(":");
   const offline = online === "0";
-  const stale = Number(minute) * 60_000 - new Date(updatedAt).getTime() > STALE_AFTER_MS;
+  const nowMs = Number(minute) * 60_000;
+  const stale = nowMs - new Date(updatedAt).getTime() > staleAfterMs(nowMs);
   if (!offline && !stale) return null;
 
   return (

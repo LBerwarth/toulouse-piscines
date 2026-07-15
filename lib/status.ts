@@ -71,8 +71,8 @@ async function getPoolStatus(pool: Pool, week: TodayInfo[], fresh: boolean): Pro
 }
 
 /**
- * Cron actif ~6 h–22 h à Toulouse (cf. .github/workflows/check-closures.yml) ;
- * pause la nuit. En journée, au-delà de cet âge le cache est jugé en retard
+ * Cron actif ~7 h–19 h à Toulouse (cf. .github/workflows/check-closures.yml) ;
+ * pause le soir et la nuit. En journée, au-delà de cet âge le cache est jugé en retard
  * (passage du cron sauté — ses `schedule` sont « best effort ») et la page
  * relance elle-même un rescan de secours. Choisi SOUS le seuil du bandeau
  * « périmé » (StaleBanner, 45 min) pour qu'un simple retard du cron ne
@@ -82,11 +82,11 @@ async function getPoolStatus(pool: Pool, week: TodayInfo[], fresh: boolean): Pro
 const CACHE_STALE_DAYTIME_MS = 35 * 60_000; // 35 min
 
 /**
- * La nuit (cron en pause, ~22 h–6 h), la mairie ne publie pas : on sert le cache
- * du soir tel quel jusqu'à cet âge sans rescanner. Au-delà, le cron est
- * vraisemblablement mort et la page reprend le rescan.
+ * La nuit (cron en pause, ~19 h–7 h, soit 12 h), la mairie ne publie pas : on
+ * sert le cache du soir tel quel jusqu'à cet âge sans rescanner. Au-delà, le
+ * cron est vraisemblablement mort et la page reprend le rescan.
  */
-const CACHE_ABANDONED_NIGHT_MS = 36_000_000; // 10 h
+const CACHE_ABANDONED_NIGHT_MS = 46_800_000; // 13 h
 
 /** Heure locale à Toulouse (0–23). Le serveur peut tourner en UTC. */
 function toulouseHour(): number {
@@ -101,7 +101,7 @@ function toulouseHour(): number {
 
 /** Le cron de jour tourne-t-il à cette heure locale ? (fenêtre large été/hiver.) */
 function cronActive(hour: number): boolean {
-  return hour >= 6 && hour < 22;
+  return hour >= 7 && hour < 19;
 }
 
 /**
@@ -276,8 +276,8 @@ export async function refreshStatusReport(): Promise<StatusReport> {
  * attendant. Le seuil de jour est sous celui du bandeau « périmé » : un simple
  * retard du cron ne l'affiche jamais.
  *
- * La nuit (cron en pause), on sert le cache du soir tel quel jusqu'à 10 h d'âge
- * sans rescanner : la mairie ne publie pas la nuit.
+ * Le soir et la nuit (cron en pause dès ~19 h), on sert le cache du soir tel
+ * quel jusqu'à 13 h d'âge sans rescanner : la mairie ne publie pas la nuit.
  *
  * Sans Supabase (dev local) ou s'il est injoignable : repli sur un scraping
  * direct mis en cache 30 min par le Data Cache de Next.

@@ -9,12 +9,12 @@ name: Vérifier les fermetures de piscines
 on:
   schedule:
     # Heures en UTC (Toulouse = UTC+1/+2, plages calées sur l'heure d'été).
-    # Tous les quarts d'heure en journée (~6 h – 21 h à Toulouse) — fraîcheur
-    # des horaires ET latence des notifications — puis un dernier passage vers
-    # 21 h et RIEN la nuit : la mairie ne publie pas la nuit, et la page sert
-    # le cache jusqu'à 10 h d'âge (cf. lib/status.ts) sans rescanner.
-    - cron: "7,22,37,52 4-18 * * *"
-    - cron: "7 19 * * *" # dernier passage (~21 h 07 à Toulouse l'été)
+    # Tous les quarts d'heure en journée (~7 h – 19 h à Toulouse) : la mairie
+    # publie aux heures de bureau, inutile de scruter plus tôt ou plus tard.
+    # RIEN le soir ni la nuit : la page sert le cache jusqu'à 13 h d'âge
+    # (cf. lib/status.ts) sans rescanner.
+    - cron: "7,22,37,52 5-16 * * *"
+    - cron: "7 17 * * *" # dernier passage (~19 h 07 à Toulouse l'été)
   workflow_dispatch: {} # déclenchement manuel possible
 
 jobs:
