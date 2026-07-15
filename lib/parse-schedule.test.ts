@@ -670,6 +670,38 @@ describe("analyzeDay — cas réels", () => {
     expect(mardi.slotsToday).toEqual([{ start: "07:00", end: "19:00" }]);
   });
 
+  it("Toulouse Lautrec : « ouverture retardée … à partir de 12h » (sans « fermeture ») → créneaux réduits le jour visé", () => {
+    // Cas réel 2026-07-13 : l'actu n'emploie jamais « fermé » — elle disait
+    // « ouvrira à partir de 12h » / « pas accessible de 10h à 12h ». La grille
+    // doit démarrer à 12h ce jeudi-là, et rester intacte les autres jours.
+    const delayed: ShortNews = {
+      date: "2026-07-13",
+      title: "Ouverture retardée de la piscine Toulouse Lautrec, jeudi 16 juillet",
+      text:
+        "En raison d'une intervention technique, la piscine Toulouse Lautrec ouvrira " +
+        "exceptionnellement au public à partir de 12h, ce jeudi 16 juillet. " +
+        "Elle ne sera donc pas accessible de 10h à 12h.",
+      pools: [],
+    };
+    const p = page(
+      [{ title: "Horaires", lines: [text("Tous les jours de 10h à 20h")] }],
+      "",
+      [],
+      [delayed]
+    );
+    const pool = { slug: "piscine-toulouse-lautrec", name: "Toulouse Lautrec" };
+    // Jeudi 16 juillet : ouverture repoussée à 12h.
+    const jeudi = analyzeDay(p, today(20260716, 3), pool);
+    expect(jeudi.openToday).toBe(true);
+    expect(jeudi.slotsToday).toEqual([{ start: "12:00", end: "20:00" }]);
+    // Mercredi 15 (veille) : grille intacte, mais l'annonce reste visible et
+    // notifiable (c'est elle qui a déclenché la notification la veille).
+    const mercredi = analyzeDay(p, today(20260715, 2), pool);
+    expect(mercredi.slotsToday).toEqual([{ start: "10:00", end: "20:00" }]);
+    expect(mercredi.announcements.map((a) => a.title)).toContain(delayed.title);
+    expect(exceptionalSignature(mercredi)).toMatch(/Ouverture retardée/);
+  });
+
   it("notificationBody : contient la piscine (via le titre) et le détail de l'actu, pas seulement le titre", () => {
     const partial: ShortNews = {
       date: "2026-06-29",

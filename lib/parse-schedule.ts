@@ -779,6 +779,32 @@ function collectPoolNews(
       continue;
     }
 
+    // Ouverture retardée / indisponibilité annoncée SANS le mot « fermeture »
+    // (« ouvrira à partir de 12h », « ne sera pas accessible de 10h à 12h ») :
+    // même effet qu'une fermeture partielle. L'annonce reste affichée tous les
+    // jours (elle porte sa date) ; les créneaux ne sont retirés que le(s)
+    // jour(s) couvert(s) — sinon la grille contredit la notification envoyée.
+    const lateOpen = hay.match(
+      /(?:ouvrira|ouverture)[^.]{0,80}?a partir de\s+(\d{1,2})\s*h\s*([0-5]\d)?/
+    );
+    if (lateOpen || /pas accessible|inaccessible|ouverture (?:retardee|decalee)/.test(hay)) {
+      const windows = parseTimeRanges(`${news.title}\n${news.text}`);
+      if (lateOpen && Number(lateOpen[1]) <= 24) {
+        windows.push({ start: "00:00", end: fmt(Number(lateOpen[1]), Number(lateOpen[2] ?? 0)) });
+      }
+      const range = closureRange(news.text, today.year) ?? closureRange(news.title, today.year);
+      const applies = !range || (today.dateKey >= range.from && today.dateKey <= range.to);
+      out.push({
+        title: news.title,
+        detail: newsDetail(news),
+        extendClose: null,
+        closure: null,
+        closureWindow: applies && windows.length > 0 ? mergeSlots(windows) : null,
+        closureScope: null,
+      });
+      continue;
+    }
+
     // Actu non bloquante (extension d'horaire, info) : bornée par une plage
     // explicite si présente (« à compter du vendredi 19 juin »…).
     const range = parseDateRange(news.text, today.year);
