@@ -1,14 +1,10 @@
-// Service worker : application installable (PWA / Play Store via TWA) ET
-// disponible hors ligne.
-//
-// On met en cache la dernière page consultée et les ressources statiques, afin
-// d'afficher les derniers horaires connus quand le réseau est absent — plutôt
-// qu'un simple message « hors ligne ». Le réseau reste TOUJOURS prioritaire : la
-// page n'est servie depuis le cache qu'en cas d'échec réseau. Un bandeau dans
-// l'application prévient alors que les horaires peuvent être périmés.
-
-// Incrémenter à chaque changement de stratégie pour purger les anciens caches.
-const CACHE = "piscines-v1";
+// Corps du service worker, servi par app/sw.js/route.ts avec un identifiant de
+// build en préfixe (SW_BUILD) : chaque déploiement produit un script différent,
+// donc détecté comme une mise à jour par le navigateur.
+export const SW_SOURCE = String.raw`
+// Le nom du cache est lié au build : à chaque déploiement, l'ancien cache est
+// purgé lors de l'activation du nouveau service worker.
+const CACHE = "piscines-" + SW_BUILD;
 
 const OFFLINE_HTML =
   "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>" +
@@ -116,3 +112,4 @@ self.addEventListener("notificationclick", (event) => {
     })
   );
 });
+`;
