@@ -1,13 +1,62 @@
 @import "tailwindcss";
 
+/* Le thème suit l'OS par défaut ; data-theme (posé avant la première peinture
+   par le script du layout) permet à l'utilisateur de forcer clair ou sombre. */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    &:where(:not([data-theme="light"]):not([data-theme="light"] *)) {
+      @slot;
+    }
+  }
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+}
+
 :root {
-  --background: #fdf8fc;
-  --foreground: #2a1230;
+  /* Déclarer les deux schémas coupe l'assombrissement automatique de Chrome
+     Android et aligne les contrôles natifs (barres de défilement, sélecteurs). */
+  color-scheme: light dark;
+
+  --bg-light: #fdf8fc;
+  --fg-light: #2a1230;
+  --card-light: #ffffff;
+  --bg-dark: #120d1a;
+  --fg-dark: #ece3f3;
+  --card-dark: #1c1527;
+
+  --background: var(--bg-light);
+  --foreground: var(--fg-light);
+  --card: var(--card-light);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: var(--bg-dark);
+    --foreground: var(--fg-dark);
+    --card: var(--card-dark);
+  }
+}
+
+:root[data-theme="dark"] {
+  --background: var(--bg-dark);
+  --foreground: var(--fg-dark);
+  --card: var(--card-dark);
+}
+
+/* Thème forcé : les contrôles natifs suivent le choix, plus l'OS. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
   --font-sans: var(--font-outfit);
 }
 

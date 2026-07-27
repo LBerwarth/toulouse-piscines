@@ -49,8 +49,8 @@ export function WeekTimeline({
   const dateKey = days[index]?.dateKey;
 
   return (
-    <section className="mb-6 rounded-3xl bg-white p-4 shadow-lg shadow-pink-100/60 sm:p-5">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-violet-800">
+    <section className="mb-6 rounded-3xl bg-card p-4 shadow-lg shadow-pink-100/60 dark:shadow-none dark:ring-1 dark:ring-white/10 sm:p-5">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-violet-800 dark:text-violet-200">
         Horaires par jour
       </h2>
 
@@ -67,8 +67,8 @@ export function WeekTimeline({
               aria-pressed={isSel}
               className={`rounded-full px-0 py-1 text-center text-xs transition-colors ${
                 isSel
-                  ? "bg-gradient-to-r from-pink-500 to-fuchsia-600 font-semibold text-white shadow-sm"
-                  : "bg-fuchsia-50 font-medium text-fuchsia-900 hover:bg-fuchsia-100"
+                  ? "bg-gradient-to-r from-pink-500 to-fuchsia-600 font-semibold text-white shadow-sm dark:from-pink-600 dark:to-fuchsia-700"
+                  : "bg-fuchsia-50 font-medium text-fuchsia-900 hover:bg-fuchsia-100 dark:bg-fuchsia-400/10 dark:text-fuchsia-100 dark:hover:bg-fuchsia-400/20"
               }`}
             >
               {label}
@@ -78,7 +78,7 @@ export function WeekTimeline({
       </div>
 
       {dateKey && (
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
           <span className="capitalize">{formatDateKey(dateKey)}</span>
           {isToday && " (aujourd'hui)"}
         </p>

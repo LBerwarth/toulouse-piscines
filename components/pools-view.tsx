@@ -172,8 +172,8 @@ function Chip({
       aria-pressed={selected}
       className={`rounded-full px-3 py-1 text-xs transition-colors ${
         selected
-          ? "bg-gradient-to-r from-pink-500 to-fuchsia-600 font-semibold text-white shadow-sm"
-          : "bg-white/70 font-medium text-fuchsia-900 hover:bg-fuchsia-100"
+          ? "bg-gradient-to-r from-pink-500 to-fuchsia-600 font-semibold text-white shadow-sm dark:from-pink-600 dark:to-fuchsia-700"
+          : "bg-white/70 font-medium text-fuchsia-900 hover:bg-fuchsia-100 dark:bg-white/10 dark:text-fuchsia-100 dark:hover:bg-fuchsia-400/20"
       }`}
     >
       {children}
@@ -222,7 +222,7 @@ export function PoolsView({ pools, days }: { pools: PoolStatus[]; days: WeekDayR
         {/* Un groupe de filtres par ligne — tous se cumulent. */}
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="w-16 shrink-0 text-xs font-medium uppercase tracking-wide text-violet-800/70">
+            <span className="w-16 shrink-0 text-xs font-medium uppercase tracking-wide text-violet-800/70 dark:text-violet-200/85">
               Type
             </span>
             <div className="flex flex-wrap gap-1.5">
@@ -239,7 +239,7 @@ export function PoolsView({ pools, days }: { pools: PoolStatus[]; days: WeekDayR
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <span className="w-16 shrink-0 text-xs font-medium uppercase tracking-wide text-violet-800/70">
+            <span className="w-16 shrink-0 text-xs font-medium uppercase tracking-wide text-violet-800/70 dark:text-violet-200/85">
               Longueur
             </span>
             <div className="flex flex-wrap gap-1.5">
@@ -256,7 +256,7 @@ export function PoolsView({ pools, days }: { pools: PoolStatus[]; days: WeekDayR
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <span className="w-16 shrink-0 text-xs font-medium uppercase tracking-wide text-violet-800/70">
+            <span className="w-16 shrink-0 text-xs font-medium uppercase tracking-wide text-violet-800/70 dark:text-violet-200/85">
               Ouvertes
             </span>
             <div className="flex flex-wrap gap-1.5">
@@ -274,7 +274,7 @@ export function PoolsView({ pools, days }: { pools: PoolStatus[]; days: WeekDayR
 
           {hasFavorites && (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="w-16 shrink-0 text-xs font-medium uppercase tracking-wide text-violet-800/70">
+              <span className="w-16 shrink-0 text-xs font-medium uppercase tracking-wide text-violet-800/70 dark:text-violet-200/85">
                 Suivies
               </span>
               <Chip selected={effectiveFavOnly} onClick={() => setFavOnly(!effectiveFavOnly)}>
@@ -292,8 +292,8 @@ export function PoolsView({ pools, days }: { pools: PoolStatus[]; days: WeekDayR
             aria-pressed={notif.subscribed}
             className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors disabled:opacity-60 ${
               notif.subscribed
-                ? "bg-violet-600 text-white shadow-sm"
-                : "bg-white/70 text-violet-800 hover:bg-fuchsia-100"
+                ? "bg-violet-600 text-white shadow-sm dark:bg-violet-500"
+                : "bg-white/70 text-violet-800 hover:bg-fuchsia-100 dark:bg-white/10 dark:text-violet-100 dark:hover:bg-fuchsia-400/20"
             }`}
             title="Recevoir une notification en cas de fermeture ou de changement exceptionnel (horaires…)"
           >
@@ -306,27 +306,27 @@ export function PoolsView({ pools, days }: { pools: PoolStatus[]; days: WeekDayR
       {/* Toujours visible (pas seulement au survol) : sur mobile il n'y a pas
           d'infobulle, c'est ici qu'on explique l'objet des notifications. */}
       {notif.supported && (
-        <p className="-mt-2 mb-4 text-xs text-slate-500">{notifHint}</p>
+        <p className="-mt-2 mb-4 text-xs text-slate-500 dark:text-slate-300">{notifHint}</p>
       )}
 
       {/* Choix explicite de la portée des alertes, posé une seule fois (dès
           qu'on est abonné·e ET qu'au moins une ★ existe). */}
       {notif.scopePrompt && (
-        <div className="-mt-2 mb-4 flex flex-wrap items-center gap-2 rounded-xl bg-violet-50 px-3 py-2">
-          <span className="text-xs font-medium text-violet-900">
+        <div className="-mt-2 mb-4 flex flex-wrap items-center gap-2 rounded-xl bg-violet-50 px-3 py-2 dark:bg-violet-400/10">
+          <span className="text-xs font-medium text-violet-900 dark:text-violet-100">
             🔔 Vos alertes : toutes les piscines, ou seulement vos ★ ?
           </span>
           <button
             type="button"
             onClick={() => notif.chooseScope("starred")}
-            className="rounded-full bg-white px-3 py-1 text-xs font-medium text-violet-800 shadow-sm transition-colors hover:bg-fuchsia-100"
+            className="rounded-full bg-white px-3 py-1 text-xs font-medium text-violet-800 shadow-sm transition-colors hover:bg-fuchsia-100 dark:bg-white/10 dark:text-violet-100 dark:hover:bg-fuchsia-400/20"
           >
             Seulement mes ★
           </button>
           <button
             type="button"
             onClick={() => notif.chooseScope("all")}
-            className="rounded-full bg-white px-3 py-1 text-xs font-medium text-violet-800 shadow-sm transition-colors hover:bg-fuchsia-100"
+            className="rounded-full bg-white px-3 py-1 text-xs font-medium text-violet-800 shadow-sm transition-colors hover:bg-fuchsia-100 dark:bg-white/10 dark:text-violet-100 dark:hover:bg-fuchsia-400/20"
           >
             Toutes les piscines
           </button>
@@ -336,7 +336,7 @@ export function PoolsView({ pools, days }: { pools: PoolStatus[]; days: WeekDayR
       {/* iOS dans le navigateur : au lieu de masquer les alertes (PushManager
           absent hors PWA installée), on explique la marche à suivre. */}
       {notif.needsInstall && (
-        <p className="-mt-2 mb-4 rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-800">
+        <p className="-mt-2 mb-4 rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:bg-sky-400/10 dark:text-sky-200">
           📲 Sur iPhone et iPad, les alertes (fermetures imprévues, canicule…)
           nécessitent d&apos;installer l&apos;app : touchez{" "}
           <span className="font-medium">Partager</span> puis{" "}
@@ -346,7 +346,7 @@ export function PoolsView({ pools, days }: { pools: PoolStatus[]; days: WeekDayR
       )}
 
       {filtered.length === 0 ? (
-        <p className="mb-6 rounded-3xl bg-white p-6 text-center text-sm text-slate-500 shadow-lg shadow-pink-100/60">
+        <p className="mb-6 rounded-3xl bg-card p-6 text-center text-sm text-slate-500 shadow-lg shadow-pink-100/60 dark:text-slate-400 dark:shadow-none dark:ring-1 dark:ring-white/10">
           Aucune piscine ne correspond à ces filtres.
         </p>
       ) : (

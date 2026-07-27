@@ -92,7 +92,7 @@ export function StaleBanner({
   return (
     <div
       role="status"
-      className="mb-4 flex items-start gap-2 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm"
+      className="mb-4 flex items-start gap-2 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm dark:border-amber-400/40 dark:bg-amber-300/10 dark:text-amber-100"
     >
       <span aria-hidden className="mt-0.5 text-base leading-none">
         {offline ? "📡" : "⚠️"}

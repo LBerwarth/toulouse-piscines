@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export const metadata: Metadata = {
   title: "Confidentialité — Piscines de Toulouse",
@@ -13,8 +14,10 @@ const CONTACT_EMAIL = "lena.berw@gmail.com";
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="mt-6">
-      <h2 className="text-base font-semibold text-violet-800">{title}</h2>
-      <div className="mt-1.5 space-y-2 text-sm leading-relaxed text-slate-700">{children}</div>
+      <h2 className="text-base font-semibold text-violet-800 dark:text-violet-200">{title}</h2>
+      <div className="mt-1.5 space-y-2 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+        {children}
+      </div>
     </section>
   );
 }
@@ -22,7 +25,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default function Confidentialite() {
   return (
     <main className="mx-auto w-full max-w-2xl px-4 py-5 sm:py-8">
-      <header className="relative mb-6 overflow-hidden rounded-3xl bg-gradient-to-br from-pink-500 via-fuchsia-600 to-violet-800 px-5 py-6 text-white shadow-lg shadow-pink-200/60 sm:px-7 sm:py-8">
+      <header className="relative mb-6 overflow-hidden rounded-3xl bg-gradient-to-br from-pink-500 via-fuchsia-600 to-violet-800 py-6 pl-5 pr-16 text-white shadow-lg shadow-pink-200/60 dark:from-pink-700 dark:via-fuchsia-800 dark:to-violet-900 dark:shadow-black/40 sm:py-8 sm:pl-7 sm:pr-18">
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
           Politique de confidentialité
         </h1>
@@ -30,10 +33,11 @@ export default function Confidentialite() {
           Application « Piscines de Toulouse »
         </p>
         <p className="mt-3 text-xs text-pink-100/80">Dernière mise à jour : {UPDATED}</p>
+        <ThemeToggle />
       </header>
 
-      <div className="rounded-3xl bg-white p-5 shadow-lg shadow-pink-100/60 sm:p-7">
-        <p className="text-sm leading-relaxed text-slate-700">
+      <div className="rounded-3xl bg-card p-5 shadow-lg shadow-pink-100/60 dark:shadow-none dark:ring-1 dark:ring-white/10 sm:p-7">
+        <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
           « Piscines de Toulouse » est une application personnelle et bénévole, non affiliée à
           la mairie de Toulouse ni à Toulouse Métropole. Elle affiche les horaires d&apos;ouverture
           des piscines municipales tels que publiés sur le site de la métropole. Cette page
@@ -111,7 +115,7 @@ export default function Confidentialite() {
           <p>
             <a
               href={`mailto:${CONTACT_EMAIL}`}
-              className="font-medium text-fuchsia-700 underline underline-offset-2"
+              className="font-medium text-fuchsia-700 underline underline-offset-2 dark:text-fuchsia-300"
             >
               {CONTACT_EMAIL}
             </a>
@@ -129,7 +133,7 @@ export default function Confidentialite() {
       <div className="mt-6 text-center">
         <Link
           href="/"
-          className="text-sm font-medium text-violet-700 underline underline-offset-2 hover:text-fuchsia-700"
+          className="text-sm font-medium text-violet-700 underline underline-offset-2 hover:text-fuchsia-700 dark:text-violet-300 dark:hover:text-fuchsia-300"
         >
           ← Retour à l&apos;application
         </Link>

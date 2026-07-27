@@ -126,31 +126,51 @@ function Badge({ state }: { state: LiveState }) {
   switch (state.kind) {
     case "open":
       return (
-        <Pill bg="bg-violet-100" text="text-violet-700" dot="bg-violet-600">
+        <Pill
+          bg="bg-violet-100 dark:bg-violet-400/15"
+          text="text-violet-700 dark:text-violet-200"
+          dot="bg-violet-600 dark:bg-violet-300"
+        >
           Ouverte · jusqu&apos;à {state.until}
         </Pill>
       );
     case "later":
       return (
-        <Pill bg="bg-amber-100" text="text-amber-700" dot="bg-amber-500">
+        <Pill
+          bg="bg-amber-100 dark:bg-amber-400/15"
+          text="text-amber-700 dark:text-amber-200"
+          dot="bg-amber-500 dark:bg-amber-300"
+        >
           Ouvre à {state.at}
         </Pill>
       );
     case "done":
       return (
-        <Pill bg="bg-slate-100" text="text-slate-500" dot="bg-slate-400">
+        <Pill
+          bg="bg-slate-100 dark:bg-white/10"
+          text="text-slate-500 dark:text-slate-300"
+          dot="bg-slate-400 dark:bg-slate-400"
+        >
           Terminé pour aujourd&apos;hui
         </Pill>
       );
     case "closed":
       return (
-        <Pill bg="bg-red-100" text="text-red-700" dot="bg-red-500">
+        <Pill
+          bg="bg-red-100 dark:bg-red-400/15"
+          text="text-red-700 dark:text-red-200"
+          dot="bg-red-500 dark:bg-red-300"
+        >
           Fermée aujourd&apos;hui
         </Pill>
       );
     default:
       return (
-        <Pill bg="bg-slate-100" text="text-slate-400" dot="bg-slate-300">
+        <Pill
+          bg="bg-slate-100 dark:bg-white/10"
+          text="text-slate-400 dark:text-slate-400"
+          dot="bg-slate-300 dark:bg-slate-500"
+        >
           Indisponible
         </Pill>
       );
@@ -175,7 +195,7 @@ function PoolCard({
   const banners = day?.announcements?.filter((a) => a.title !== day.closureReason) ?? [];
 
   return (
-    <li className="rounded-2xl bg-white p-4 shadow-md shadow-pink-100/50">
+    <li className="rounded-2xl bg-card p-4 shadow-md shadow-pink-100/50 dark:shadow-none dark:ring-1 dark:ring-white/10">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-1.5">
           {onToggleFavorite && (
@@ -190,7 +210,9 @@ function PoolCard({
                   : "Ajouter aux favoris : en tête de liste, et ciblage possible des alertes"
               }
               className={`-ml-0.5 shrink-0 text-lg leading-none transition-colors ${
-                isFavorite ? "text-amber-400" : "text-slate-300 hover:text-amber-300"
+                isFavorite
+                  ? "text-amber-400"
+                  : "text-slate-300 hover:text-amber-300 dark:text-slate-500 dark:hover:text-amber-300"
               }`}
             >
               {isFavorite ? "★" : "☆"}
@@ -202,14 +224,14 @@ function PoolCard({
             rel="noreferrer"
             title="Page officielle de la mairie — ouvre un nouvel onglet"
             aria-label={`${pool.name} — page officielle de la mairie (nouvel onglet)`}
-            className="group/name text-base font-semibold text-slate-900 underline decoration-slate-300 decoration-1 underline-offset-4 hover:text-fuchsia-700 hover:decoration-fuchsia-400"
+            className="group/name text-base font-semibold text-slate-900 underline decoration-slate-300 decoration-1 underline-offset-4 hover:text-fuchsia-700 hover:decoration-fuchsia-400 dark:text-slate-50 dark:decoration-slate-500 dark:hover:text-fuchsia-300 dark:hover:decoration-fuchsia-400"
           >
             {pool.name}
             {/* Marqueur « lien externe » : sans lui le nom passe pour un titre,
                 et l'indice au survol n'existe pas sur mobile. Même gabarit que
                 le bouton d'itinéraire, en neutre — celui-ci reste l'action mise
                 en avant. */}
-            <span className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded-md bg-slate-100 align-[-0.35em] text-slate-500 transition-colors group-hover/name:bg-fuchsia-100 group-hover/name:text-fuchsia-700">
+            <span className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded-md bg-slate-100 align-[-0.35em] text-slate-500 transition-colors group-hover/name:bg-fuchsia-100 group-hover/name:text-fuchsia-700 dark:bg-white/10 dark:text-slate-300 dark:group-hover/name:bg-fuchsia-400/25 dark:group-hover/name:text-fuchsia-100">
               <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-current">
                 <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z" />
               </svg>
@@ -233,7 +255,7 @@ function PoolCard({
       </div>
 
       {!pool.ok && (
-        <p className="mt-2 text-sm text-rose-700">
+        <p className="mt-2 text-sm text-rose-700 dark:text-rose-300">
           Impossible de récupérer la page officielle ({pool.error}).
         </p>
       )}
@@ -245,18 +267,23 @@ function PoolCard({
               key={basin.label ?? "bassin"}
               className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1"
             >
-              {basin.label && <span className="text-xs text-slate-500">{basin.label} :</span>}
+              {basin.label && (
+                <span className="text-xs text-slate-500 dark:text-slate-400">{basin.label} :</span>
+              )}
               {basin.slots.length > 0 ? (
                 basin.slots.map((slot) => (
                   <span
                     key={`${slot.start}-${slot.end}`}
-                    className="rounded-full bg-fuchsia-50 px-2.5 py-0.5 text-xs font-medium tabular-nums text-fuchsia-900"
+                    className="rounded-full bg-fuchsia-50 px-2.5 py-0.5 text-xs font-medium tabular-nums text-fuchsia-900 dark:bg-fuchsia-400/15 dark:text-fuchsia-100"
                   >
                     {slot.start}–{slot.end}
                   </span>
                 ))
               ) : (
-                <span className="text-xs italic text-slate-400" title={basin.note ?? undefined}>
+                <span
+                  className="text-xs italic text-slate-400 dark:text-slate-300"
+                  title={basin.note ?? undefined}
+                >
                   fermé
                 </span>
               )}
@@ -270,7 +297,7 @@ function PoolCard({
             {day.slotsToday.map((slot) => (
               <span
                 key={`${slot.start}-${slot.end}`}
-                className="rounded-full bg-fuchsia-50 px-2.5 py-0.5 text-xs font-medium tabular-nums text-fuchsia-900"
+                className="rounded-full bg-fuchsia-50 px-2.5 py-0.5 text-xs font-medium tabular-nums text-fuchsia-900 dark:bg-fuchsia-400/15 dark:text-fuchsia-100"
               >
                 {slot.start}–{slot.end}
               </span>
@@ -280,16 +307,18 @@ function PoolCard({
       )}
 
       {state.kind === "closed" && state.reason && (
-        <p className="mt-2 text-sm text-slate-600">{state.reason}</p>
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{state.reason}</p>
       )}
 
       {banners.length > 0 && (
         <ul className="mt-2 space-y-1.5">
           {banners.map((a) => (
-            <li key={a.title} className="text-xs text-sky-800">
+            <li key={a.title} className="text-xs text-sky-800 dark:text-sky-200">
               <span className="font-medium">📢 {a.title}</span>
               {a.detail && (
-                <span className="mt-0.5 block whitespace-pre-line text-sky-700/90">{a.detail}</span>
+                <span className="mt-0.5 block whitespace-pre-line text-sky-700/90 dark:text-sky-300/90">
+                  {a.detail}
+                </span>
               )}
             </li>
           ))}
@@ -299,7 +328,7 @@ function PoolCard({
       {day && day.alerts.length > 0 && (
         <ul className="mt-2 space-y-1">
           {day.alerts.map((alert) => (
-            <li key={alert} className="text-xs text-amber-800">
+            <li key={alert} className="text-xs text-amber-800 dark:text-amber-200">
               ⚠️ {alert}
             </li>
           ))}
@@ -307,19 +336,19 @@ function PoolCard({
       )}
 
       {day && day.confidence === "low" && (
-        <p className="mt-2 text-xs italic text-slate-400">
+        <p className="mt-2 text-xs italic text-slate-400 dark:text-slate-300">
           Information incertaine — vérifiez la page officielle.
         </p>
       )}
 
       {pool.raw && (
         <details className="mt-2">
-          <summary className="cursor-pointer text-xs text-slate-500">
+          <summary className="cursor-pointer text-xs text-slate-500 dark:text-slate-400">
             Voir les infos publiées
           </summary>
-          <div className="mt-2 space-y-2 text-xs text-slate-600">
+          <div className="mt-2 space-y-2 text-xs text-slate-600 dark:text-slate-300">
             {day?.extendedTo && (
-              <p className="rounded-lg bg-sky-50 px-2.5 py-1.5 text-sky-800">
+              <p className="rounded-lg bg-sky-50 px-2.5 py-1.5 text-sky-800 dark:bg-sky-400/10 dark:text-sky-200">
                 ⏱️ Aujourd&apos;hui, la fermeture est exceptionnellement repoussée à{" "}
                 {day.extendedTo} (voir l&apos;actu 📢 ci-dessus). La grille ci-dessous reprend les
                 horaires habituels publiés par la mairie.
@@ -327,20 +356,22 @@ function PoolCard({
             )}
             {pool.raw.intro && <p>{pool.raw.intro}</p>}
             {pool.raw.notices.map((n) => (
-              <p key={n} className="text-amber-800">
+              <p key={n} className="text-amber-800 dark:text-amber-200">
                 {n}
               </p>
             ))}
             {pool.raw.sections.map((s) => (
               <details
                 key={s.title}
-                className="rounded-xl border border-fuchsia-100/60 bg-fuchsia-50/40 px-2.5 py-1.5"
+                className="rounded-xl border border-fuchsia-100/60 bg-fuchsia-50/40 px-2.5 py-1.5 dark:border-fuchsia-300/15 dark:bg-fuchsia-400/5"
               >
-                <summary className="cursor-pointer font-medium text-slate-700">{s.title}</summary>
+                <summary className="cursor-pointer font-medium text-slate-700 dark:text-slate-200">
+                  {s.title}
+                </summary>
                 <div className="mt-1.5 space-y-1.5">
                   {orderLines(s.lines).map((line, i) =>
                     line.kind === "heading" ? (
-                      <p key={i} className="pt-1 font-semibold text-slate-700">
+                      <p key={i} className="pt-1 font-semibold text-slate-700 dark:text-slate-200">
                         {line.text}
                       </p>
                     ) : (

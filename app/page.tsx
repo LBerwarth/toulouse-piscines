@@ -1,6 +1,7 @@
 import { getStatusReport } from "@/lib/status";
 import { PoolsView } from "@/components/pools-view";
 import { StaleBanner } from "@/components/stale-banner";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 // Rendu dynamique : on relit à chaque visite le cache partagé (Supabase),
 // alimenté par le cron (15 min en journée, pause la nuit — cf. lib/status.ts).
@@ -23,7 +24,7 @@ export default async function Home() {
 
   return (
     <main className="mx-auto w-full max-w-2xl px-4 py-5 sm:py-8">
-      <header className="relative mb-6 overflow-hidden rounded-3xl bg-gradient-to-br from-pink-500 via-fuchsia-600 to-violet-800 px-5 py-6 text-white shadow-lg shadow-pink-200/60 sm:px-7 sm:py-8">
+      <header className="relative mb-6 overflow-hidden rounded-3xl bg-gradient-to-br from-pink-500 via-fuchsia-600 to-violet-800 py-6 pl-5 pr-16 text-white shadow-lg shadow-pink-200/60 dark:from-pink-700 dark:via-fuchsia-800 dark:to-violet-900 dark:shadow-black/40 sm:py-8 sm:pl-7 sm:pr-18">
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
           Piscines de Toulouse
         </h1>
@@ -57,20 +58,21 @@ export default async function Home() {
             fill="currentColor"
           />
         </svg>
+        <ThemeToggle />
       </header>
 
       <StaleBanner updatedAt={report.updatedAt} updatedLabel={updated} />
 
       <PoolsView pools={report.pools} days={report.days} />
 
-      <footer className="mt-10 text-center text-xs text-slate-400">
+      <footer className="mt-10 text-center text-xs text-slate-400 dark:text-slate-300">
         <p>
           Application personnelle et indépendante, non affiliée à la mairie de
           Toulouse ni à Toulouse Métropole et ne les représentant pas. Données
           issues des pages officielles des piscines sur{" "}
           <a
             href="https://metropole.toulouse.fr/sortir/sport/les-piscines-toulousaines"
-            className="underline underline-offset-2 hover:text-fuchsia-700"
+            className="underline underline-offset-2 hover:text-fuchsia-700 dark:hover:text-fuchsia-300"
             target="_blank"
             rel="noreferrer"
           >
@@ -80,7 +82,7 @@ export default async function Home() {
           de chaque piscine.
         </p>
         <p className="mt-2">
-          <a href="/confidentialite" className="underline underline-offset-2 hover:text-fuchsia-700">
+          <a href="/confidentialite" className="underline underline-offset-2 hover:text-fuchsia-700 dark:hover:text-fuchsia-300">
             Confidentialité
           </a>
         </p>

@@ -190,18 +190,18 @@ export function TimelineChart({
   const showNowLine = showNow && nowMin !== null && nowMin >= rangeStart && nowMin <= rangeEnd;
 
   const Track = ({ children }: { children: React.ReactNode }) => (
-    <div className="relative h-5 flex-1 overflow-hidden rounded-full bg-fuchsia-50">
+    <div className="relative h-5 flex-1 overflow-hidden rounded-full bg-fuchsia-50 dark:bg-fuchsia-400/10">
       {ticks.map((t) => (
         <span
           key={t}
-          className="absolute inset-y-0 w-px bg-fuchsia-100"
+          className="absolute inset-y-0 w-px bg-fuchsia-100 dark:bg-fuchsia-300/20"
           style={{ left: `${pct(t)}%` }}
         />
       ))}
       {children}
       {showNowLine && (
         <span
-          className="absolute inset-y-0 w-0.5 rounded-full bg-violet-950"
+          className="absolute inset-y-0 w-0.5 rounded-full bg-violet-950 dark:bg-violet-200"
           style={{ left: `${pct(nowMin!)}%` }}
         />
       )}
@@ -221,7 +221,7 @@ export function TimelineChart({
           {ticks.map((t) => (
             <span
               key={t}
-              className="absolute -translate-x-1/2 text-[10px] font-medium tabular-nums text-violet-700/60"
+              className="absolute -translate-x-1/2 text-[10px] font-medium tabular-nums text-violet-700/60 dark:text-violet-200/70"
               style={{ left: `${pct(t)}%` }}
             >
               {t / 60}h
@@ -233,7 +233,7 @@ export function TimelineChart({
       {rows.map((row) => {
         if (row.kind === "group") {
           return (
-            <p key={row.key} className="pt-1 text-xs font-semibold text-slate-800">
+            <p key={row.key} className="pt-1 text-xs font-semibold text-slate-800 dark:text-slate-100">
               {isFavorite?.(row.slug) && <FavStar />}
               {row.label}
             </p>
@@ -250,8 +250,8 @@ export function TimelineChart({
           <p
             className={
               row.sub
-                ? "break-words pl-3 text-[11px] leading-tight text-slate-500"
-                : "break-words text-xs font-medium leading-tight text-slate-700"
+                ? "break-words pl-3 text-[11px] leading-tight text-slate-500 dark:text-slate-400"
+                : "break-words text-xs font-medium leading-tight text-slate-700 dark:text-slate-200"
             }
           >
             {showStar && <FavStar />}
@@ -273,7 +273,7 @@ export function TimelineChart({
                     avec « … » quand elle est étroite (mobile) ; title = texte
                     complet au survol. */}
                 <span
-                  className="absolute inset-y-0 left-1.5 right-2 flex items-center text-[10px] italic text-slate-400"
+                  className="absolute inset-y-0 left-1.5 right-2 flex items-center text-[10px] italic text-slate-400 dark:text-slate-300"
                   title={row.note}
                 >
                   <span className="truncate">{row.note}</span>
@@ -309,7 +309,7 @@ export function TimelineChart({
         );
       })}
 
-      <div className="flex items-center gap-3 pt-1 text-[10px] text-slate-400">
+      <div className="flex items-center gap-3 pt-1 text-[10px] text-slate-400 dark:text-slate-300">
         {showNow && (
           <span className="flex items-center gap-1">
             <span className="inline-block h-2 w-3 rounded-full bg-gradient-to-r from-violet-500 to-purple-600" />{" "}
@@ -322,7 +322,7 @@ export function TimelineChart({
         </span>
         {showNow && (
           <span className="flex items-center gap-1">
-            <span className="inline-block h-2 w-0.5 bg-violet-950" /> maintenant
+            <span className="inline-block h-2 w-0.5 bg-violet-950 dark:bg-violet-200" /> maintenant
           </span>
         )}
       </div>
