@@ -200,9 +200,20 @@ function PoolCard({
             href={pool.url}
             target="_blank"
             rel="noreferrer"
-            className="text-base font-semibold text-slate-900 hover:text-fuchsia-700"
+            title="Page officielle de la mairie — ouvre un nouvel onglet"
+            aria-label={`${pool.name} — page officielle de la mairie (nouvel onglet)`}
+            className="group/name text-base font-semibold text-slate-900 underline decoration-slate-300 decoration-1 underline-offset-4 hover:text-fuchsia-700 hover:decoration-fuchsia-400"
           >
             {pool.name}
+            {/* Marqueur « lien externe » : sans lui le nom passe pour un titre,
+                et l'indice au survol n'existe pas sur mobile. Même gabarit que
+                le bouton d'itinéraire, en neutre — celui-ci reste l'action mise
+                en avant. */}
+            <span className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded-md bg-slate-100 align-[-0.35em] text-slate-500 transition-colors group-hover/name:bg-fuchsia-100 group-hover/name:text-fuchsia-700">
+              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-current">
+                <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z" />
+              </svg>
+            </span>
           </a>
           <a
             href={poolDirectionsUrl(pool)}
