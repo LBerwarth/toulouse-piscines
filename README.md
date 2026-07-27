@@ -40,6 +40,20 @@ Si la mairie change de formulation et qu'une piscine s'affiche mal, ajouter le n
 2. Importer le projet sur [vercel.com](https://vercel.com) — aucune variable d'environnement à configurer.
 3. Déployer. Le plan Hobby suffit : le cron tourne sur GitHub Actions (`.github/workflows/check-closures.yml`), scrape les pages, alimente le cache partagé (table `status_cache`, cf. `db/status_cache.sql`) et envoie les notifications. La page ne fait que lire ce cache — un seul scraper à cadence connue face à la mairie, quel que soit le trafic. Filet de sécurité : si le cron est muet depuis plus de 10 h (il ne tourne pas la nuit), le visiteur redéclenche un rescan comme avant. Sans Supabase, repli automatique sur un scraping direct mis en cache 30 min (sans cache partagé).
 
+## Signalements des utilisateurs
+
+Le formulaire « Signaler une erreur ou donner votre avis » (bas de la page d'accueil, ancre `#signaler`) poste sur `/api/feedback`, qui enregistre le message dans la table `feedback` (cf. `db/feedback.sql`, à exécuter une fois dans l'éditeur SQL Supabase) **et** envoie un e-mail via Resend. Les deux sont tentés indépendamment : le signalement n'est perdu que si les deux échouent, et l'auteur voit alors un lien `mailto:` de repli.
+
+Variables d'environnement (facultatives — sans elles, seul l'enregistrement en base a lieu) :
+
+| Variable | Rôle | Défaut |
+| --- | --- | --- |
+| `RESEND_API_KEY` | Clé API Resend. Absente = pas d'e-mail, aucune erreur. | — |
+| `FEEDBACK_EMAIL_TO` | Destinataire de la notification. | `lena.berw@gmail.com` |
+| `FEEDBACK_EMAIL_FROM` | Expéditeur. L'adresse partagée `onboarding@resend.dev` n'exige aucun domaine vérifié mais ne délivre qu'au titulaire du compte Resend. | `Piscines de Toulouse <onboarding@resend.dev>` |
+
+Un signalement d'horaire faux se corrige comme les autres écarts de formulation : ajouter le cas réel dans `lib/parse-schedule.test.ts`, puis adapter le parseur.
+
 ## Limites connues
 
 - Le parseur est déterministe : si la mairie publie une formulation inédite, la piscine concernée passe en « information incertaine » ou « horaires non reconnus » — les horaires bruts restent visibles. Corriger via un test + une règle.

@@ -8,7 +8,7 @@ export const metadata: Metadata = {
     "Politique de confidentialité de l'application Piscines de Toulouse : aucune donnée personnelle collectée.",
 };
 
-const UPDATED = "12 juin 2026";
+const UPDATED = "27 juillet 2026";
 const CONTACT_EMAIL = "lena.berw@gmail.com";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -41,16 +41,18 @@ export default function Confidentialite() {
           « Piscines de Toulouse » est une application personnelle et bénévole, non affiliée à
           la mairie de Toulouse ni à Toulouse Métropole. Elle affiche les horaires d&apos;ouverture
           des piscines municipales tels que publiés sur le site de la métropole. Cette page
-          explique quelles données l&apos;application traite — en résumé&nbsp;: aucune donnée
-          personnelle.
+          explique quelles données l&apos;application traite — en résumé&nbsp;: rien, sauf ce que
+          vous choisissez vous-même de nous écrire.
         </p>
 
         <Section title="Données personnelles collectées">
           <p>
-            <strong>Aucune.</strong> L&apos;application ne demande pas de compte, ne nécessite
-            aucune inscription et ne collecte aucune donnée personnelle vous concernant. Elle
-            n&apos;accède pas à votre position, à vos contacts, à votre caméra, à vos photos ni à
-            aucune autre information de votre appareil.
+            <strong>Aucune, par défaut.</strong> L&apos;application ne demande pas de compte, ne
+            nécessite aucune inscription et ne collecte aucune donnée personnelle vous concernant.
+            Elle n&apos;accède pas à votre position, à vos contacts, à votre caméra, à vos photos
+            ni à aucune autre information de votre appareil. Les deux seules exceptions sont
+            facultatives et déclenchées par vous&nbsp;: les notifications et le formulaire de
+            signalement, décrits ci-dessous.
           </p>
         </Section>
 
@@ -77,6 +79,23 @@ export default function Confidentialite() {
           </p>
         </Section>
 
+        <Section title="Formulaire de signalement (facultatif)">
+          <p>
+            Le formulaire « Signaler une erreur ou donner votre avis » ne transmet que ce que vous
+            saisissez&nbsp;: le type de signalement, la piscine concernée, votre message et — si
+            vous le souhaitez — votre adresse e-mail. Aucune adresse IP, aucun identifiant
+            d&apos;appareil ni aucune donnée de navigation n&apos;y est joint.
+          </p>
+          <p>
+            Ces messages sont conservés dans notre base (Supabase, Union européenne) et envoyés par
+            e-mail à l&apos;auteure de l&apos;application, à la seule fin de corriger
+            l&apos;application et, le cas échéant, de vous répondre. Votre adresse e-mail
+            n&apos;est utilisée que pour cette réponse&nbsp;: ni liste de diffusion, ni
+            partage, ni revente. Écrivez-nous à l&apos;adresse de contact ci-dessous pour faire
+            supprimer un message envoyé.
+          </p>
+        </Section>
+
         <Section title="Données techniques d'hébergement">
           <p>
             Le site est hébergé par Vercel. Comme tout serveur web, l&apos;infrastructure
@@ -98,16 +117,21 @@ export default function Confidentialite() {
 
         <Section title="Partage de données">
           <p>
-            Aucune donnée personnelle n&apos;étant collectée, aucune donnée n&apos;est vendue,
-            partagée ni transmise à des tiers.
+            Aucune donnée n&apos;est vendue ni exploitée à des fins publicitaires. Les seuls
+            prestataires techniques sont ceux qui permettent le service&nbsp;: Vercel
+            (hébergement), Supabase (base de données, Union européenne) et Resend (envoi de
+            l&apos;e-mail de signalement). Ils agissent pour notre compte et n&apos;utilisent pas
+            ces données à d&apos;autres fins.
           </p>
         </Section>
 
         <Section title="Vos droits">
           <p>
-            L&apos;application ne traitant aucune donnée personnelle, il n&apos;y a aucune donnée
-            à consulter, corriger ou supprimer. Pour toute question relative à cette politique,
-            vous pouvez écrire à l&apos;adresse ci-dessous.
+            Si vous n&apos;avez ni activé les alertes ni envoyé de signalement, il n&apos;existe
+            aucune donnée vous concernant. Dans le cas contraire, vous pouvez à tout moment
+            demander à consulter, corriger ou supprimer ce qui vous concerne — les alertes se
+            désactivent directement depuis le bouton « M&apos;alerter ». Pour toute demande ou
+            question relative à cette politique, écrivez à l&apos;adresse ci-dessous.
           </p>
         </Section>
 

@@ -2,6 +2,8 @@ import { getStatusReport } from "@/lib/status";
 import { PoolsView } from "@/components/pools-view";
 import { StaleBanner } from "@/components/stale-banner";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { FeedbackForm } from "@/components/feedback-form";
+import { FEEDBACK_ANCHOR } from "@/lib/feedback";
 
 // Rendu dynamique : on relit à chaque visite le cache partagé (Supabase),
 // alimenté par le cron (15 min en journée, pause la nuit — cf. lib/status.ts).
@@ -65,6 +67,8 @@ export default async function Home() {
 
       <PoolsView pools={report.pools} days={report.days} />
 
+      <FeedbackForm />
+
       <footer className="mt-10 text-center text-xs text-slate-400 dark:text-slate-300">
         <p>
           Application personnelle et indépendante, non affiliée à la mairie de
@@ -84,6 +88,10 @@ export default async function Home() {
         <p className="mt-2">
           <a href="/confidentialite" className="underline underline-offset-2 hover:text-fuchsia-700 dark:hover:text-fuchsia-300">
             Confidentialité
+          </a>
+          {" · "}
+          <a href={`#${FEEDBACK_ANCHOR}`} className="underline underline-offset-2 hover:text-fuchsia-700 dark:hover:text-fuchsia-300">
+            Signaler une erreur
           </a>
         </p>
       </footer>
