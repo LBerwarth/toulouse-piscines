@@ -121,14 +121,16 @@ export function parsePoolPage(html: string): PageSections {
 
   /**
    * Texte d'un conteneur en préservant les sauts de ligne entre blocs (p / li /
-   * <br>). Contrairement à un simple .text() qui collerait « …19 juin :Tarif »,
+   * titres / <br>). Contrairement à un simple .text() qui collerait « …19 juin :Tarif »,
    * on insère un \n après chaque bloc puis on normalise les espaces sans toucher
    * aux retours à la ligne. On clone pour ne pas altérer l'arbre (réutilisé
    * ensuite pour extraire les liens /annuaire/).
    */
   const blockText = (el: ReturnType<typeof $>): string => {
     const clone = el.clone();
-    clone.find("p, li").append("\n");
+    // Les titres comptent aussi : la mairie place ses bandeaux d'avis dans un
+    // <h3> collé au texte suivant (« …4 juillet 2026La piscine propose… »).
+    clone.find("p, li, h2, h3, h4, h5, h6").append("\n");
     return clone
       .text()
       .replace(/[^\S\n]+/g, " ")
@@ -141,7 +143,7 @@ export function parsePoolPage(html: string): PageSections {
   // (« Lundi : 12h - 14h<br>Mardi : fermé… ») : on en fait de vraies lignes.
   $("br").replaceWith("\n");
 
-  const intro = clean($(".field--name-field-chapeau").text());
+  const intro = blockText($(".field--name-field-chapeau"));
 
   const sections: { title: string; body: string; lines: SectionLine[] }[] = [];
 
@@ -164,7 +166,9 @@ export function parsePoolPage(html: string): PageSections {
   $(".paragraph--type--texte-encadre").each((_, el) => {
     const block = $(el);
     if (block.parents(".accordion-item").length > 0) return;
-    const text = clean(block.text());
+    // blockText (et non clean) : les avis publiés en <h3> doivent rester des
+    // phrases à part, sinon la détection de fermeture les rate.
+    const text = blockText(block);
     if (!text || text.length <= 10) return;
 
     const titleEl = block

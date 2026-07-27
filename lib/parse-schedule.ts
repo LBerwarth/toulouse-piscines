@@ -63,6 +63,15 @@ const MONTHS = [
 ];
 const MONTH_RE = MONTHS.join("|");
 
+/**
+ * Découpe un texte en phrases : ponctuation forte, ou saut de ligne — les \n
+ * marquent les frontières de blocs HTML (cf. blockText), et la mairie publie ses
+ * bandeaux d'avis sans point final (« Fermeture estivale le 4 juillet 2026 »).
+ */
+function sentences(text: string): string[] {
+  return text.split(/(?<=[.!])\s+|\n/);
+}
+
 /** minuscules + sans accents, pour des regex simples */
 function norm(s: string): string {
   return s
@@ -240,6 +249,11 @@ interface PeriodBlock {
    * à n'ouvrir un bassin estival (petit bassin extérieur) que sur cette période.
    */
   summer: boolean;
+  /**
+   * Grille de vacances qui exclut explicitement l'été : à écarter en juillet /
+   * août (cf. excludesSummerTitle).
+   */
+  excludesSummer: boolean;
 }
 
 function periodTypeOf(title: string): PeriodType {
@@ -256,6 +270,24 @@ function periodTypeOf(title: string): PeriodType {
 function isSummerTitle(title: string): boolean {
   const t = norm(title);
   return /\bete\b|estival/.test(t) && !/hors\s*ete/.test(t) && !/vacances/.test(t);
+}
+
+/**
+ * Grille de vacances qui ne décrit PAS les vacances d'été : la mairie publie
+ * « vacances scolaires (hors été) », « vacances scolaires automne et hiver »…
+ * En juillet / août elle ne couvre pas la période en cours, et la servir
+ * afficherait de faux horaires — typiquement une piscine d'hiver fermée l'été
+ * dont la grille scolaire datée a expiré.
+ */
+function excludesSummerTitle(title: string): boolean {
+  const t = norm(title);
+  return /vacances/.test(t) && /hors\s*ete|automne|hiver|printemps|toussaint|noel|fevrier/.test(t);
+}
+
+/** Juillet–août : les vacances d'été. */
+function isSummerMonth(today: TodayInfo): boolean {
+  const month = Math.floor(today.dateKey / 100) % 100;
+  return month === 7 || month === 8;
 }
 
 /**
@@ -281,8 +313,9 @@ function buildBlocks(
     const sectionRange = parseDateRange(section.title, refYear);
     const periodType = periodTypeOf(section.title);
     const summer = isSummerTitle(section.title);
+    const excludesSummer = excludesSummerTitle(section.title);
 
-    let current: PeriodBlock = { range: sectionRange, periodType, rules: [], summer };
+    let current: PeriodBlock = { range: sectionRange, periodType, rules: [], summer, excludesSummer };
     blocks.push(current);
 
     for (const line of section.lines) {
@@ -307,10 +340,10 @@ function buildBlocks(
         (labelType !== null || labelRange !== null || /habituel|exceptionnel|chaleur|canicule/.test(n));
 
       if (headingRange) {
-        current = { range: headingRange, periodType, rules: [], summer };
+        current = { range: headingRange, periodType, rules: [], summer, excludesSummer };
         blocks.push(current);
       } else if (isScheduleLabel) {
-        current = { range: labelRange, periodType: labelType, rules: [], summer };
+        current = { range: labelRange, periodType: labelType, rules: [], summer, excludesSummer };
         blocks.push(current);
       } else {
         current.rules.push(line.text);
@@ -346,14 +379,17 @@ const ALERT_KEYWORDS = [
 /** Phrases conditionnelles (« en cas de… », « lors des matchs… ») : info permanente, pas une alerte */
 const CONDITIONAL_RE = /\b(en cas d|lors d|si la |si le |si vous )/;
 
+// Volontairement SANS « fermeture estivale/hivernale » : ces bandeaux du bloc
+// descriptif ne portent qu'une date de début, donc une fermeture sans fin, qui
+// survivrait à la réouverture. Les fermetures saisonnières passent par « En
+// bref » (cf. collectPoolNews), que la mairie retire à la réouverture.
 const STRONG_CLOSURE_RE =
   /(fermeture exceptionnelle|exceptionnellement fermee?|fermee? (?:pour|en raison|suite a|jusqu)[^.]*|piscine (?:est |restera )?fermee)/;
 
 function extractAlerts(texts: string[]): string[] {
   const alerts: string[] = [];
   for (const text of texts) {
-    const sentences = text.split(/(?<=[.!])\s+/);
-    for (const sentence of sentences) {
+    for (const sentence of sentences(text)) {
       const s = sentence.trim();
       if (!s || s.length > 300) continue;
       const n = norm(s);
@@ -429,8 +465,7 @@ export function notificationBody(day: DayStatus): string {
 
 function findStrongClosure(texts: string[], today: TodayInfo): string | null {
   for (const text of texts) {
-    const sentences = text.split(/(?<=[.!])\s+/);
-    for (const sentence of sentences) {
+    for (const sentence of sentences(text)) {
       const n = norm(sentence);
       const m = n.match(STRONG_CLOSURE_RE);
       if (!m) continue;
@@ -541,7 +576,7 @@ export function detectClosedBasins(texts: string[]): { label: string; note: stri
   const clauseRe =
     /(?:^|[,;:]|tandis que|alors que)\s*((?:le |la |les |l')?[^,;.]{0,80}?bassins?[^,;.]{0,60}?)\s+(ferm\w*[^,;.]{0,80}|(?:est|sont|restent?)\s+en\s+travaux[^,;.]{0,40})/i;
   for (const text of texts) {
-    for (const sentence of text.split(/(?<=[.!])\s+/)) {
+    for (const sentence of sentences(text)) {
       const n = norm(sentence);
       // Conditions météo (« en cas de… ») et fermetures saisonnières non
       // datées : pas évaluables, on ne les affiche pas comme fermeture
@@ -566,7 +601,7 @@ export function detectOpenBasinLabel(texts: string[]): string | null {
   const re =
     /((?:le |la |les |l')?[^;.]{0,100}?bassins?[^;.]{0,100}?)\s+(?:a r?ouvert|est r?ouvert)/i;
   for (const text of texts) {
-    for (const sentence of text.split(/(?<=[.!])\s+/)) {
+    for (const sentence of sentences(text)) {
       if (/en cas d|periode hivernale|periode estivale/.test(norm(sentence))) continue;
       const m = sentence.match(re);
       if (!m) continue;
@@ -670,22 +705,73 @@ function parseExtensionClose(after: string): string | null {
   return fmt(h, min);
 }
 
+/** Règle conditionnelle « canicule » d'une grille, sous ses trois formes. */
+interface CaniculeRule {
+  /**
+   * Jours concernés, repris de la règle qui précède — renseigné pour la seule
+   * forme « plage » (cf. collectCaniculeRules). null = toute la grille.
+   */
+  days: Set<number> | null;
+  /** Plage complète REMPLAÇANT l'horaire du jour (« de 12h à 21h »). */
+  replacement: TimeSlot[] | null;
+  /** Fermeture absolue (« fermeture à 21h »). */
+  close: string | null;
+  /** Décalage de la fermeture, en minutes (« fermeture retardée d'1h »). */
+  shiftMinutes: number | null;
+  /** Ligne d'origine, affichée en détail du bandeau. */
+  source: string;
+}
+
+/** « 20:00 » + 60 → « 21:00 », borné à minuit. */
+function addMinutes(hhmm: string, minutes: number): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const total = Math.min(h * 60 + m + minutes, 24 * 60);
+  return fmt(Math.floor(total / 60), total % 60);
+}
+
 /**
- * Heure de fermeture d'une règle conditionnelle « canicule » d'une grille
- * d'horaires (« En cas d'alerte orange canicule, fermeture à 21h » → "21:00").
- * Renvoie null si la ligne ne parle pas de canicule ou n'annonce pas d'heure
- * absolue introduite par « à »/« jusqu'à » — ainsi « fermeture retardée d'1h »
- * (relative, non résoluble sans l'horaire de base) est ignorée.
+ * Lit une règle conditionnelle « canicule ». Trois formes, dans cet ordre :
+ * plage complète (« de 12h à 21h ») qui remplace l'horaire du jour, décalage
+ * relatif (« fermeture retardée d'1h »), fermeture absolue (« à 21h »).
+ * Renvoie null si la ligne ne parle pas de canicule ou n'annonce rien de chiffré.
  */
-function parseCaniculeClose(line: string): string | null {
+function parseCaniculeRule(line: string): Omit<CaniculeRule, "days"> | null {
   const t = norm(line);
   if (!/canicule|forte chaleur|vague de chaleur/.test(t)) return null;
-  const m = t.match(/(?:\ba|jusqu'?a)\s+(\d{1,2})\s*h\s*([0-5]\d)?/);
-  if (!m) return null;
-  const h = Number(m[1]);
-  const min = Number(m[2] ?? 0);
-  if (h > 24) return null;
-  return fmt(h, min);
+  const base = { replacement: null, close: null, shiftMinutes: null, source: line };
+
+  const ranges = parseTimeRanges(line);
+  if (ranges.length > 0) return { ...base, replacement: mergeSlots(ranges) };
+
+  const rel = t.match(/(?:retardee|prolongee|decalee|repoussee)\s+d'?\s*(\d{1,2})\s*h/);
+  if (rel) return { ...base, shiftMinutes: Number(rel[1]) * 60 };
+
+  const abs = t.match(/(?:\ba|jusqu'?a)\s+(\d{1,2})\s*h\s*([0-5]\d)?/);
+  if (abs && Number(abs[1]) <= 24) return { ...base, close: fmt(Number(abs[1]), Number(abs[2] ?? 0)) };
+
+  return null;
+}
+
+/**
+ * Règles canicule du bloc actif. Une plage de remplacement est rattachée aux
+ * jours de la règle qui la précède — la mairie écrit « Samedi et dimanche, de
+ * 8h30 à 15h » puis, en dessous, la variante canicule. Les modificateurs
+ * (fermeture absolue ou décalée) valent en revanche pour toute la grille : une
+ * page ne porte qu'une seule ligne « retardée d'1h », placée après la dernière
+ * règle mais applicable à toutes.
+ */
+function collectCaniculeRules(rules: string[]): CaniculeRule[] {
+  const out: CaniculeRule[] = [];
+  let lastDays: Set<number> | null = null;
+  for (const rule of rules) {
+    if (CONDITIONAL_RE.test(norm(rule))) {
+      const parsed = parseCaniculeRule(rule);
+      if (parsed) out.push({ ...parsed, days: parsed.replacement ? lastDays : null });
+      continue;
+    }
+    if (parseTimeRanges(rule).length > 0) lastDays = parseDays(rule);
+  }
+  return out;
 }
 
 /**
@@ -725,11 +811,20 @@ function basinClosureScope(hay: string): string | null {
 }
 
 /**
+ * Tournure désignant l'ensemble des piscines. Sert à reconnaître une fermeture
+ * collective — le 1er mai, la mairie ferme tout et n'énumère pas les douze
+ * piscines, alors que les autres jours fériés font l'objet d'une actu nominative.
+ */
+const ALL_POOLS_RE =
+  /\b(?:toutes les piscines|l'ensemble des piscines|les piscines (?:municipales|toulousaines))\b/;
+
+/**
  * Actualités « En bref » concernant cette piscine et applicables aujourd'hui.
  * Le bloc est identique sur toutes les pages : on ne retient une actu que si
  * elle cite la piscine, soit par un lien /annuaire/<slug> (extensions
  * d'horaires), soit par son nom dans le titre/texte (fermetures saisonnières
- * annoncées sans lien, ex. « Fermeture de la piscine Léo Lagrange… »).
+ * annoncées sans lien, ex. « Fermeture de la piscine Léo Lagrange… ») — soit,
+ * pour les seules fermetures, si elle vise explicitement toutes les piscines.
  */
 function collectPoolNews(
   shorts: ShortNews[],
@@ -737,10 +832,10 @@ function collectPoolNews(
   pool: { slug: string; name?: string } | undefined
 ): PoolNews[] {
   if (!pool) return [];
-  // Les piscines saisonnières portent un suffixe « été »/« hiver » que la mairie
-  // ne répète pas dans ses actus (« Fermeture de la piscine Alfred Nakache… ») :
-  // on apparie donc sur le nom de base, sans ce suffixe.
-  const fullName = pool.name ? norm(pool.name) : "";
+  // La mairie ne reprend pas les qualificatifs du nom dans ses actus : ni le
+  // suffixe saisonnier (« Alfred Nakache » pour la piscine « hiver »), ni le site
+  // entre parenthèses (« Jean Boiteux » pour « Jean Boiteux (Espace Job) »).
+  const fullName = pool.name ? norm(pool.name).replace(/\s*\([^)]*\)\s*$/, "") : "";
   const season = /\shiver$/.test(fullName) ? "hiver" : /\sete$/.test(fullName) ? "ete" : null;
   const name = fullName.replace(/\s(ete|hiver)$/, "");
   const out: PoolNews[] = [];
@@ -749,7 +844,11 @@ function collectPoolNews(
     const hay = norm(`${news.title} ${news.text}`);
     const linked = news.pools.find((p) => p.slug === pool.slug);
     const named = name.length > 0 && hay.includes(name);
-    if (!linked && !named) continue;
+    // Actu collective : reconnue à sa seule tournure, donc réservée aux actus
+    // qui ne ciblent AUCUNE piscine en particulier — dès qu'une liste est
+    // publiée (canicule, jour férié nominatif), c'est elle qui fait foi.
+    const collective = news.pools.length === 0 && ALL_POOLS_RE.test(hay);
+    if (!linked && !named && !collective) continue;
     if (out.some((n) => n.title === news.title)) continue;
 
     if (/\bferm/.test(hay)) {
@@ -806,7 +905,10 @@ function collectPoolNews(
     }
 
     // Actu non bloquante (extension d'horaire, info) : bornée par une plage
-    // explicite si présente (« à compter du vendredi 19 juin »…).
+    // explicite si présente (« à compter du vendredi 19 juin »…). Une actu
+    // seulement collective s'arrête ici : un recrutement ou une info générale
+    // n'a pas à s'afficher en bandeau sur les douze piscines.
+    if (!linked && !named) continue;
     const range = parseDateRange(news.text, today.year);
     if (range && (today.dateKey < range.from || today.dateKey > range.to)) continue;
     out.push({
@@ -936,9 +1038,14 @@ export function analyzeDay(
 
   let selected: PeriodBlock | null = dated[0] ?? null;
 
+  // En juillet / août, une grille « vacances hors été » ne décrit pas la période
+  // en cours : on l'écarte du repli plutôt que d'afficher ses horaires.
+  const summerNow = isSummerMonth(today);
+  const summerExcluded = summerNow && blocks.some((b) => !b.range && b.excludesSummer);
+
   if (!selected) {
     // Aucune plage datée ne couvre aujourd'hui → arbitrage scolaire / vacances
-    const undated = blocks.filter((b) => !b.range);
+    const undated = blocks.filter((b) => !b.range && !(summerNow && b.excludesSummer));
     const school = undated.find((b) => b.periodType === "school");
     const vacation = undated.find((b) => b.periodType === "vacation");
     if (today.isSchoolHoliday === true && vacation) {
@@ -961,14 +1068,16 @@ export function analyzeDay(
   }
 
   if (!selected) {
-    // Tous les blocs sont datés mais aucun ne couvre aujourd'hui :
-    // typique des piscines saisonnières (« été ») hors saison.
+    // Tous les blocs sont datés mais aucun ne couvre aujourd'hui : typique des
+    // piscines saisonnières (« été ») hors saison — fermeture sûre. Si en
+    // revanche il ne restait que des grilles « hors été » écartées ci-dessus, la
+    // page ne dit simplement rien de la période : fermeture à confirmer.
     return {
       openToday: false,
       slotsToday: [],
       closureReason: "Pas d'ouverture prévue à cette période",
       alerts,
-      confidence: "high",
+      confidence: summerExcluded ? "low" : "high",
       basins: [],
       announcements: messages,
     };
@@ -1038,6 +1147,10 @@ export function analyzeDay(
       const { cleaned, notes } = stripClosedRanges(piece);
       const n = norm(cleaned);
       if (NOISE_RE.test(n)) continue;
+      // Règle conditionnelle (« En cas d'alerte orange canicule, de 12h à 21h ») :
+      // ce n'est pas l'horaire du jour. Seul le repli canicule la traduit en
+      // fermeture repoussée, et uniquement pendant un épisode déclaré.
+      if (CONDITIONAL_RE.test(n)) continue;
 
       const days = parseDays(cleaned);
       const times = parseTimeRanges(cleaned);
@@ -1188,19 +1301,39 @@ export function analyzeDay(
 
   // Repli « canicule » : quand la mairie a déclaré un épisode dans le bloc « En
   // bref » et que la grille active porte une règle conditionnelle (« En cas
-  // d'alerte orange canicule, fermeture à 21h »), on honore cette fermeture
-  // prolongée — la page ne le signalant pas autrement. On ne lit que les règles
-  // du bloc actif aujourd'hui : le repli est donc borné à la période concernée
-  // (la règle 21h vit dans la grille estivale, pas la scolaire — inerte hors été).
+  // d'alerte orange canicule… »), on l'honore — la page ne le signalant pas
+  // autrement. On ne lit que les règles du bloc actif aujourd'hui : le repli est
+  // donc borné à la période concernée (la règle 21h vit dans la grille estivale,
+  // pas la scolaire — inerte hors été).
+  const latestClose = () =>
+    basins.reduce((m, b) => b.slots.reduce((mm, s) => (s.end > mm ? s.end : mm), m), "");
+  const caniculeToday = caniculeEpisodeActive(page.shorts ?? [], today)
+    ? collectCaniculeRules(selected.rules).filter((r) => r.days === null || r.days.has(today.weekday))
+    : [];
+
+  // Une plage de remplacement SUBSTITUE l'horaire du jour au lieu de le
+  // prolonger : le samedi de Godard passe de 8h30-15h à 12h-21h, ouverture
+  // décalée comprise. Les bassins déjà fermés le restent.
+  const replacement = caniculeToday.find((r) => r.replacement)?.replacement ?? null;
+  if (replacement) {
+    for (const b of basins) {
+      if (b.slots.length > 0) b.slots = mergeSlots(replacement);
+    }
+  }
+
+  // Fermeture absolue ou décalée. Le décalage se calcule APRÈS un éventuel
+  // remplacement, sur l'horaire réellement affiché ce jour-là.
   let caniculeClose: string | null = null;
   let caniculeRule: string | null = null;
-  if (caniculeEpisodeActive(page.shorts ?? [], today)) {
-    for (const rule of selected.rules) {
-      const close = parseCaniculeClose(rule);
-      if (close && (!caniculeClose || close > caniculeClose)) {
-        caniculeClose = close;
-        caniculeRule = rule;
-      }
+  for (const r of caniculeToday) {
+    let close = r.close;
+    if (r.shiftMinutes !== null) {
+      const base = latestClose();
+      close = base ? addMinutes(base, r.shiftMinutes) : null;
+    }
+    if (close && (!caniculeClose || close > caniculeClose)) {
+      caniculeClose = close;
+      caniculeRule = r.source;
     }
   }
 
@@ -1212,12 +1345,22 @@ export function analyzeDay(
   // ex. week-end déjà ouvert plus tard).
   const target =
     [extendTo, caniculeClose].filter((t): t is string => t !== null).sort().at(-1) ?? null;
-  const latestClose = () => basins.reduce((m, b) => b.slots.reduce((mm, s) => (s.end > mm ? s.end : mm), m), "");
   let extendedTo: string | null = null;
   if (target) {
     const before = latestClose();
     for (const b of basins) b.slots = extendClosing(b.slots, target);
     if (latestClose() > before) extendedTo = target;
+  }
+
+  // Horaires canicule de substitution : bandeau dédié, notifiable comme les
+  // autres annonces (le bandeau « fermeture prolongée » ci-dessous ne couvre
+  // que l'allongement, pas le décalage d'ouverture).
+  if (replacement) {
+    const plages = replacement.map((s) => `${closeLabel(s.start)}–${closeLabel(s.end)}`).join(", ");
+    messages.push({
+      title: `Canicule : horaires modifiés (${plages})`,
+      detail: caniculeToday.find((r) => r.replacement)?.source ?? null,
+    });
   }
 
   // Si c'est le repli canicule qui a réellement repoussé la fermeture (au-delà

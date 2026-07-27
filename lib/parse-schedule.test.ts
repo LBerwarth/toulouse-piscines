@@ -617,6 +617,145 @@ describe("analyzeDay — cas réels", () => {
     expect(ete.openToday).toBe(true);
   });
 
+  it("Jean Boiteux : fermeture estivale nommée sans « (Espace Job) » → fermée (nom de base)", () => {
+    const boiteuxClosure: ShortNews = {
+      date: "2026-05-27",
+      title: "Fermeture estivale de la piscine Jean Boiteux à compter du 4 juillet",
+      text: "La piscine Jean Boiteux sera fermée au public pour la saison estivale à compter du 4 juillet.",
+      pools: [], // citée par son nom seul, sans le site entre parenthèses
+    };
+    const p = page(
+      [
+        { title: "Horaires en période scolaire", lines: [text("Du lundi au samedi : 12h - 19h")] },
+        {
+          title: "Horaires vacances scolaires automne et hiver",
+          lines: [text("Du lundi au samedi : 12h - 19h")],
+        },
+      ],
+      "",
+      [],
+      [boiteuxClosure]
+    );
+    const boiteux = {
+      slug: "piscine-jean-boiteux-espace-job",
+      name: "Jean Boiteux (Espace Job)",
+    };
+    const r = analyzeDay(p, today(20260727, 0, true), boiteux);
+    expect(r.openToday).toBe(false);
+    expect(r.closureReason).toMatch(/Fermeture estivale/i);
+    expect(r.confidence).toBe("high");
+    // La fermeture « à compter du 4 juillet » n'a pas d'effet avant cette date
+    const avant = analyzeDay(p, today(20260602, 1, false), boiteux);
+    expect(avant.openToday).toBe(true);
+  });
+
+  describe("jours fériés annoncés « En bref »", () => {
+    const grille = page([
+      { title: "Horaires", lines: [text("Tous les jours de 12h à 19h")] },
+    ]);
+    const papus = { slug: "piscine-papus", name: "Papus" };
+    const jany = { slug: "piscine-alex-jany", name: "Alex Jany" };
+
+    it("actu nominative → ferme les piscines citées, pas les autres", () => {
+      // Cas courant : la mairie énumère les piscines concernées.
+      const ferie: ShortNews = {
+        date: "2026-07-10",
+        title: "Fermeture de plusieurs piscines le mardi 14 juillet",
+        text: "En raison du jour férié, les piscines Papus et Jean Boiteux seront fermées au public le mardi 14 juillet.",
+        pools: [],
+      };
+      const p = { ...grille, shorts: [ferie] };
+      expect(analyzeDay(p, today(20260714, 1, true), papus).openToday).toBe(false);
+      expect(analyzeDay(p, today(20260714, 1, true), jany).openToday).toBe(true);
+    });
+
+    it("fermeture collective (1er mai) → ferme toutes les piscines, le jour dit", () => {
+      // Le 1er mai la mairie ferme tout sans énumérer : aucune piscine n'est
+      // citée, seule la tournure « l'ensemble des piscines » le dit.
+      const premierMai: ShortNews = {
+        date: "2026-04-28",
+        title: "Toutes les piscines municipales fermées le 1er mai",
+        text: "En raison du jour férié, l'ensemble des piscines municipales sera fermé au public le vendredi 1er mai.",
+        pools: [],
+      };
+      const p = { ...grille, shorts: [premierMai] };
+      const r = analyzeDay(p, today(20260501, 4, false), papus);
+      expect(r.openToday).toBe(false);
+      expect(r.closureReason).toMatch(/1er mai/i);
+      expect(analyzeDay(p, today(20260501, 4, false), jany).openToday).toBe(false);
+      // …et strictement ce jour-là
+      expect(analyzeDay(p, today(20260502, 5, false), papus).openToday).toBe(true);
+    });
+
+    it("actu collective NON bloquante → aucun bandeau sur les douze piscines", () => {
+      const info: ShortNews = {
+        date: "2026-07-01",
+        title: "Recrutement de maîtres-nageurs dans les piscines municipales",
+        text: "La Ville recrute des maîtres-nageurs pour l'ensemble des piscines municipales.",
+        pools: [],
+      };
+      const r = analyzeDay({ ...grille, shorts: [info] }, today(20260714, 1, true), papus);
+      expect(r.openToday).toBe(true);
+      expect(r.announcements).toEqual([]);
+    });
+  });
+
+  it("grille « vacances (hors été) » jamais servie en juillet/août — mais bien aux autres vacances", () => {
+    // Nakache hiver : la grille scolaire est datée et expirée, il ne reste que
+    // la grille « hors été ». En juillet elle ne décrit pas la période en cours.
+    const p = page([
+      {
+        title: "Horaires en période scolaire jusqu'au 31 mai 2026",
+        lines: [text("Lundi : 7h - 8h30")],
+      },
+      {
+        title: "Horaires pendant les vacances scolaires (hors été)",
+        lines: [text("Du lundi au vendredi : 7h - 14h")],
+      },
+    ]);
+    const pool = { slug: "piscine-alfred-nakache-hiver", name: "Alfred Nakache hiver" };
+
+    // Juillet : plus de grille applicable → fermée, mais signalée incertaine
+    const juillet = analyzeDay(p, today(20260727, 0, true), pool);
+    expect(juillet.openToday).toBe(false);
+    expect(juillet.confidence).toBe("low");
+
+    // Vacances de la Toussaint : « hors été » s'applique pleinement
+    const toussaint = analyzeDay(p, today(20261020, 1, true), pool);
+    expect(toussaint.openToday).toBe(true);
+    expect(toussaint.slotsToday).toEqual([{ start: "07:00", end: "14:00" }]);
+    expect(toussaint.confidence).toBe("high");
+  });
+
+  it("fin de sous-période estivale non couverte → repli signalé « confiance faible »", () => {
+    // Alex Jany : le bloc d'été s'arrête au 23 août, la section parente reste
+    // ouverte. Du 24 au 30 août la mairie n'a rien publié.
+    const p = page([
+      {
+        title: "Horaires en période scolaire",
+        lines: [text("Lundi : 7h - 9h / 12h - 14h / 16h - 19h")],
+      },
+      {
+        title: "Horaires d'été à compter du 4 juillet 2026",
+        lines: [heading("Du 4 juillet au 23 août"), text("De 10h à 20h")],
+      },
+      {
+        title: "Horaires pendant les vacances scolaires (hors été)",
+        lines: [text("Du lundi au jeudi : 12h - 19h")],
+      },
+    ]);
+    const pool = { slug: "piscine-alex-jany", name: "Alex Jany" };
+
+    const dansLEte = analyzeDay(p, today(20260820, 3, true), pool);
+    expect(dansLEte.slotsToday).toEqual([{ start: "10:00", end: "20:00" }]);
+    expect(dansLEte.confidence).toBe("high");
+
+    // 24 août : hors sous-période, la grille « hors été » est écartée
+    const apres = analyzeDay(p, today(20260824, 0, true), pool);
+    expect(apres.confidence).toBe("low");
+    expect(apres.slotsToday).not.toEqual([{ start: "12:00", end: "19:00" }]);
+  });
+
   it("Yvonne Godard : fermeture « En bref » datée « du lundi … au vendredi … » → fermée seulement dans la plage", () => {
     const godardClosure: ShortNews = {
       date: "2026-06-20",
@@ -972,24 +1111,98 @@ describe("analyzeDay — cas réels", () => {
     expect(r.announcements.map((a) => a.title)).not.toContain("Canicule : fermeture prolongée à 21h");
   });
 
-  it("règle canicule RELATIVE (« retardée d'1h ») non résoluble → pas d'extension même en canicule", () => {
-    const p = page(
-      [
-        {
-          title: "Horaires d'été à compter du 4 juillet 2026",
-          lines: [
-            text("Tous les jours de 10h à 20h"),
-            text("En cas d'alerte orange canicule, fermeture retardée d'1h"),
-          ],
-        },
-      ],
-      "",
-      [],
-      [caniculeShort]
+  it("Yvonne Godard : règle canicule en PLAGE (« de 12h à 21h ») → pas un créneau d'ouverture hors épisode", () => {
+    // La grille estivale double chaque ligne d'une variante canicule. Celle du
+    // week-end porte une plage complète, à ne pas confondre avec un horaire.
+    const godardEte = page([
+      {
+        title: "Horaires d'été à compter du 4 juillet 2026",
+        lines: [
+          heading("Du 4 juillet au 30 août"),
+          text("Du lundi au vendredi, de 12h à 19h"),
+          text("En cas d'alerte orange canicule, fermeture à 21h"),
+          text("Samedi et dimanche, de 8h30 à 15h"),
+          text("En cas d'alerte orange canicule, de 12h à 21h"),
+        ],
+      },
+    ]);
+    const godard = { slug: "piscine-yvonne-godard", name: "Yvonne Godard" };
+
+    const lundi = analyzeDay(godardEte, today(20260727, 0, true), godard);
+    expect(lundi.slotsToday).toEqual([{ start: "12:00", end: "19:00" }]);
+    const samedi = analyzeDay(godardEte, today(20260801, 5, true), godard);
+    expect(samedi.slotsToday).toEqual([{ start: "08:30", end: "15:00" }]);
+
+    // Épisode déclaré : la règle reprend vie et repousse la fermeture à 21h
+    const canicule = { ...godardEte, shorts: [caniculeShort] };
+    const lundiChaud = analyzeDay(canicule, today(20260727, 0, true), godard);
+    expect(lundiChaud.slotsToday).toEqual([{ start: "12:00", end: "21:00" }]);
+    expect(lundiChaud.extendedTo).toBe("21:00");
+  });
+
+  it("règle canicule RELATIVE (« retardée d'1h ») → fermeture calculée sur l'horaire du jour", () => {
+    // Toulouse Lautrec : une seule ligne relative, placée après la dernière
+    // règle mais valable pour toute la grille — d'où un décalage différent en
+    // semaine (20h → 21h) et le week-end (19h → 20h).
+    const lignes = [
+      text("Du lundi au vendredi, de 10h à 20h"),
+      text("Samedi et dimanche, de 12h à 19h"),
+      text("En cas d'alerte orange canicule, fermeture retardée d'1h"),
+    ];
+    const grille = [{ title: "Horaires d'été à compter du 4 juillet 2026", lines: lignes }];
+    const pool = { slug: "piscine-toulouse-lautrec", name: "Toulouse Lautrec" };
+
+    // Hors épisode : la règle reste inerte
+    const calme = analyzeDay(page(grille), today(20260706, 0, true), pool);
+    expect(calme.slotsToday).toEqual([{ start: "10:00", end: "20:00" }]);
+    expect(calme.extendedTo ?? null).toBeNull();
+
+    const chaud = page(grille, "", [], [caniculeShort]);
+    const lundi = analyzeDay(chaud, today(20260706, 0, true), pool);
+    expect(lundi.slotsToday).toEqual([{ start: "10:00", end: "21:00" }]);
+    expect(lundi.extendedTo).toBe("21:00");
+
+    const samedi = analyzeDay(chaud, today(20260711, 5, true), pool);
+    expect(samedi.slotsToday).toEqual([{ start: "12:00", end: "20:00" }]);
+    expect(samedi.extendedTo).toBe("20:00");
+  });
+
+  it("plage canicule de remplacement → décale aussi l'OUVERTURE, pas seulement la fermeture", () => {
+    // Yvonne Godard : le week-end la variante canicule est une plage complète
+    // (12h-21h), pas un simple report de fermeture — 8h30 ne tient plus.
+    const grille = [
+      {
+        title: "Horaires d'été à compter du 4 juillet 2026",
+        lines: [
+          text("Du lundi au vendredi, de 12h à 19h"),
+          text("En cas d'alerte orange canicule, fermeture à 21h"),
+          text("Samedi et dimanche, de 8h30 à 15h"),
+          text("En cas d'alerte orange canicule, de 12h à 21h"),
+        ],
+      },
+    ];
+    const pool = { slug: "piscine-yvonne-godard", name: "Yvonne Godard" };
+    const chaud = page(grille, "", [], [caniculeShort]);
+
+    const samedi = analyzeDay(chaud, today(20260711, 5, true), pool);
+    expect(samedi.slotsToday).toEqual([{ start: "12:00", end: "21:00" }]);
+    expect(samedi.announcements.map((a) => a.title)).toContain(
+      "Canicule : horaires modifiés (12h–21h)"
     );
-    const r = analyzeDay(p, today(20260704, 5, true), { slug: "piscine-x", name: "X" });
-    expect(r.slotsToday).toEqual([{ start: "10:00", end: "20:00" }]);
-    expect(r.extendedTo ?? null).toBeNull();
+
+    // En semaine, la variante est un simple report : l'ouverture ne bouge pas
+    const lundi = analyzeDay(chaud, today(20260706, 0, true), pool);
+    expect(lundi.slotsToday).toEqual([{ start: "12:00", end: "21:00" }]);
+    expect(lundi.extendedTo).toBe("21:00");
+
+    // Hors épisode, les deux jours gardent la grille publiée
+    const calme = page(grille);
+    expect(analyzeDay(calme, today(20260711, 5, true), pool).slotsToday).toEqual([
+      { start: "08:30", end: "15:00" },
+    ]);
+    expect(analyzeDay(calme, today(20260706, 0, true), pool).slotsToday).toEqual([
+      { start: "12:00", end: "19:00" },
+    ]);
   });
 
   it("fermeture exceptionnelle à date unique « le samedi 20 juin » → fermée ce jour-là seulement", () => {
