@@ -220,17 +220,70 @@ export function parseDateRange(text: string, refYear: number): DateRange | null 
   return null;
 }
 
-/** Date isolée (« le samedi 20 juin », « ce 14 juillet ») → plage d'un jour */
-export function parseSingleDate(text: string, refYear: number): DateRange | null {
+/**
+ * Dates énumérées (« mardi 28 et mercredi 29 juillet », « le samedi 20 juin »)
+ * → clés AAAAMMJJ triées. Le mois et l'année manquants sont repris de l'élément
+ * voisin qui les porte : la mairie ne les écrit qu'une fois, en fin
+ * d'énumération. Dates exactes et non plage — « le 1er et le 9 août » ne
+ * concerne pas les jours entre les deux.
+ */
+export function parseDateList(text: string, refYear: number): number[] | null {
   const t = norm(text);
-  const m = t.match(
+  const wd = DAY_NAMES.join("|");
+  const item = `(?:(?:le|les|ce|ces)\\s+)?(?:(?:${wd})\\s+)?(?<!\\d)(\\d{1,2})(?!\\d)(?:er)?(?:\\s+(${MONTH_RE}))?(?:\\s+(\\d{4}))?`;
+  // L'énumération doit être amorcée par « le/les/ce/ces » ou un jour de semaine,
+  // sinon n'importe quel nombre du texte deviendrait une date. Les plages
+  // continues (« du 5 juin au 5 juillet ») sont exclues : cf. parseDateRange.
+  const chain = t.match(
     new RegExp(
-      `\\b(?:le|ce)\\s+(?:(?:${DAY_NAMES.join("|")})\\s+)?(\\d{1,2})(?:er)?\\s+(${MONTH_RE})\\s*(\\d{4})?`
+      `(?<!\\bdu\\s)(?<!\\bau\\s)(?:le|les|ce|ces|${wd})\\s+${item}(?:\\s*(?:,|et|&)\\s*${item})*`
     )
   );
-  if (!m) return null;
-  const k = dateKey(m[3] ? Number(m[3]) : refYear, MONTHS.indexOf(m[2]), Number(m[1]));
-  return { from: k, to: k };
+  if (!chain) return null;
+
+  const items = [...chain[0].matchAll(new RegExp(item, "g"))].map((m) => ({
+    day: Number(m[1]),
+    month: m[2] ? MONTHS.indexOf(m[2]) : null,
+    year: m[3] ? Number(m[3]) : null,
+  }));
+  for (let i = items.length - 2; i >= 0; i--) {
+    if (items[i].month === null) {
+      items[i].month = items[i + 1].month;
+      items[i].year = items[i + 1].year;
+    }
+  }
+  for (let i = 1; i < items.length; i++) {
+    if (items[i].month === null) {
+      items[i].month = items[i - 1].month;
+      items[i].year = items[i - 1].year;
+    }
+  }
+
+  const keys = items
+    .filter((it) => it.month !== null && it.day >= 1 && it.day <= 31)
+    .map((it) => dateKey(it.year ?? refYear, it.month!, it.day));
+  return keys.length > 0 ? [...new Set(keys)].sort((a, b) => a - b) : null;
+}
+
+/** Jours d'application d'une annonce : plage continue ou dates énumérées. */
+type DateScope = DateRange | number[];
+
+/** Jours visés par un texte daté, quelle que soit la tournure employée. */
+function datedScope(text: string, refYear: number): DateScope | null {
+  return parseDateRange(text, refYear) ?? parseDateList(text, refYear);
+}
+
+/** L'annonce vaut-elle ce jour-là ? Sans date, elle vaut tous les jours. */
+function coversDay(scope: DateScope | null, dateKey: number): boolean {
+  if (!scope) return true;
+  return Array.isArray(scope)
+    ? scope.includes(dateKey)
+    : dateKey >= scope.from && dateKey <= scope.to;
+}
+
+/** Dernier jour couvert — distingue une annonce passée d'une annonce à venir. */
+function scopeEnd(scope: DateScope): number {
+  return Array.isArray(scope) ? Math.max(...scope) : scope.to;
 }
 
 // ---------------------------------------------------------------------------
@@ -473,8 +526,7 @@ function findStrongClosure(texts: string[], today: TodayInfo): string | null {
       if (/rouvert|a rouvert|reouverture effectuee|s'est terminee/.test(n)) continue;
       // Fermeture datée (« jusqu'au 14 juin », « le samedi 20 juin ») :
       // ne s'applique qu'aux jours couverts — important pour la vue semaine.
-      const range = parseDateRange(sentence, today.year) ?? parseSingleDate(sentence, today.year);
-      if (range && (today.dateKey < range.from || today.dateKey > range.to)) continue;
+      if (!coversDay(datedScope(sentence, today.year), today.dateKey)) continue;
       return sentence.trim().slice(0, 300);
     }
   }
@@ -775,20 +827,21 @@ function collectCaniculeRules(rules: string[]): CaniculeRule[] {
 }
 
 /**
- * Plage d'application d'une fermeture annoncée. « jusqu'au 14 juin » / « du X
- * au Y » → plage explicite ; une date seule (« le 5 juin ») vaut un jour
- * unique, SAUF si le texte décrit une fermeture durable (« pour la saison
- * estivale », « fermera ») → début daté, fin ouverte (l'actu se retire quand
- * la mairie la supprime de la page).
+ * Jours d'application d'une fermeture annoncée. « jusqu'au 14 juin » / « du X
+ * au Y » → plage explicite ; des dates énumérées (« mardi 28 et mercredi 29
+ * juillet ») → ces seuls jours, SAUF si une date seule décrit une fermeture
+ * durable (« pour la saison estivale », « fermera ») → début daté, fin ouverte
+ * (l'actu se retire quand la mairie la supprime de la page).
  */
-function closureRange(text: string, refYear: number): DateRange | null {
-  const explicit = parseDateRange(text, refYear);
-  if (explicit) return explicit;
-  const single = parseSingleDate(text, refYear);
-  if (!single) return null;
-  if (/saison|estival|hivernal|fermera|ferme ses portes|jusqu'a nouvel ordre|definitiv/.test(norm(text)))
-    return { from: single.from, to: 99999999 };
-  return single;
+function closureDates(text: string, refYear: number): DateScope | null {
+  const scope = datedScope(text, refYear);
+  if (!scope || !Array.isArray(scope)) return scope;
+  if (
+    scope.length === 1 &&
+    /saison|estival|hivernal|fermera|ferme ses portes|jusqu'a nouvel ordre|definitiv/.test(norm(text))
+  )
+    return { from: scope[0], to: 99999999 };
+  return scope;
 }
 
 /**
@@ -857,10 +910,12 @@ function collectPoolNews(
       // (fermée l'été), pas celle d'été — et inversement.
       if ((season === "ete" && /estival/.test(hay)) || (season === "hiver" && /hivernal/.test(hay)))
         continue;
-      // Fermeture : ne s'applique qu'aux jours couverts par sa plage (important
-      // pour la vue semaine et pour ne pas afficher une fermeture future/passée).
-      const range = closureRange(news.text, today.year) ?? closureRange(news.title, today.year);
-      if (range && (today.dateKey < range.from || today.dateKey > range.to)) continue;
+      // Fermeture : ne FERME que les jours couverts. Déjà passée → écartée (la
+      // mairie laisse l'actu en ligne après coup) ; encore à venir → gardée en
+      // bandeau sans fermer le jour, et la notification part dès l'annonce.
+      const scope = closureDates(news.text, today.year) ?? closureDates(news.title, today.year);
+      if (scope && today.dateKey > scopeEnd(scope)) continue;
+      const applies = coversDay(scope, today.dateKey);
       // Fermeture partielle (« fermée … de 12h à 14h ») : on retire ce créneau
       // plutôt que de fermer toute la journée. On n'y voit une fermeture
       // partielle que si une plage horaire est citée ET que le texte ne décrit
@@ -871,8 +926,8 @@ function collectPoolNews(
         title: news.title,
         detail: newsDetail(news),
         extendClose: null,
-        closure: windows.length > 0 ? null : news.title,
-        closureWindow: windows.length > 0 ? windows : null,
+        closure: applies && windows.length === 0 ? news.title : null,
+        closureWindow: applies && windows.length > 0 ? windows : null,
         closureScope: windows.length > 0 ? null : basinClosureScope(hay),
       });
       continue;
@@ -891,8 +946,8 @@ function collectPoolNews(
       if (lateOpen && Number(lateOpen[1]) <= 24) {
         windows.push({ start: "00:00", end: fmt(Number(lateOpen[1]), Number(lateOpen[2] ?? 0)) });
       }
-      const range = closureRange(news.text, today.year) ?? closureRange(news.title, today.year);
-      const applies = !range || (today.dateKey >= range.from && today.dateKey <= range.to);
+      const scope = closureDates(news.text, today.year) ?? closureDates(news.title, today.year);
+      const applies = coversDay(scope, today.dateKey);
       out.push({
         title: news.title,
         detail: newsDetail(news),

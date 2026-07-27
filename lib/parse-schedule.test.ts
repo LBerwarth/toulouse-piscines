@@ -3,6 +3,7 @@ import {
   analyzeDay,
   exceptionalSignature,
   notificationBody,
+  parseDateList,
   parseDateRange,
   parseDays,
   parseTimeRanges,
@@ -123,6 +124,40 @@ describe("parseDateRange", () => {
       from: 20260824,
       to: 20260827,
     });
+  });
+});
+
+describe("parseDateList", () => {
+  it("lit « mardi 28 et mercredi 29 juillet » (mois écrit une seule fois)", () => {
+    expect(
+      parseDateList("la piscine sera fermée au public mardi 28 et mercredi 29 juillet.", 2026)
+    ).toEqual([20260728, 20260729]);
+  });
+
+  it("lit les énumérations à virgules et les dates de mois différents", () => {
+    expect(parseDateList("fermée les 24, 25 et 26 décembre", 2026)).toEqual([
+      20261224, 20261225, 20261226,
+    ]);
+    expect(parseDateList("fermée le 31 juillet et le 1er août", 2026)).toEqual([
+      20260731, 20260801,
+    ]);
+  });
+
+  it("lit une date seule (« le vendredi 1er mai », « ce lundi 29 juin »)", () => {
+    expect(parseDateList("fermées le vendredi 1er mai", 2026)).toEqual([20260501]);
+    expect(parseDateList("fermée au public, ce lundi 29 juin, de 12h à 14h", 2026)).toEqual([
+      20260629,
+    ]);
+  });
+
+  it("laisse les plages continues à parseDateRange", () => {
+    expect(parseDateList("du lundi 29 juin au vendredi 3 juillet inclus", 2026)).toBeNull();
+    expect(parseDateList("à compter du vendredi 19 juin", 2026)).toBeNull();
+  });
+
+  it("ne prend pas une heure pour une date (aucun mois cité)", () => {
+    expect(parseDateList("ouvert ce samedi de 9h à 12h", 2026)).toBeNull();
+    expect(parseDateList("le petit bassin est fermé de 18h à 21h", 2026)).toBeNull();
   });
 });
 
@@ -777,6 +812,39 @@ describe("analyzeDay — cas réels", () => {
     const pendant = analyzeDay(p, today(20260629, 0), pool);
     expect(pendant.openToday).toBe(false);
     expect(pendant.closureReason).toMatch(/Yvonne Godard/);
+  });
+
+  it("Alex Jany : fermeture « En bref » sur DEUX dates énumérées → fermée ces deux jours seulement", () => {
+    // Cas réel 2026-07-27 : la mairie n'écrit pas « du … au … » mais énumère les
+    // dates. Sans plage reconnue, la fermeture s'appliquait à toute la semaine.
+    const janyClosure: ShortNews = {
+      date: "2026-07-27",
+      title: "Fermeture du complexe Alex Jany mardi 28 et mercredi 29 juillet",
+      text: "En raison d'un problème technique, la piscine Alex Jany sera fermée au public mardi 28 et mercredi 29 juillet.",
+      pools: [],
+    };
+    const p = page(
+      [{ title: "Horaires d'été", lines: [text("Tous les jours de 10h à 20h")] }],
+      "",
+      [],
+      [janyClosure]
+    );
+    const pool = { slug: "piscine-alex-jany", name: "Alex Jany" };
+
+    // Veille (lundi 27) : ouverte, mais prévenue par le bandeau.
+    const veille = analyzeDay(p, today(20260727, 0, true), pool);
+    expect(veille.openToday).toBe(true);
+    expect(veille.slotsToday).toEqual([{ start: "10:00", end: "20:00" }]);
+    expect(veille.announcements.map((a) => a.title)).toContain(janyClosure.title);
+
+    // Les deux jours annoncés : fermée.
+    expect(analyzeDay(p, today(20260728, 1, true), pool).openToday).toBe(false);
+    expect(analyzeDay(p, today(20260729, 2, true), pool).openToday).toBe(false);
+
+    // Le lendemain (jeudi 30) : rouverte, et l'actu passée disparaît.
+    const apres = analyzeDay(p, today(20260730, 3, true), pool);
+    expect(apres.openToday).toBe(true);
+    expect(apres.announcements).toEqual([]);
   });
 
   it("Toulouse Lautrec : fermeture « En bref » DATÉE et HORAIRE (de 12h à 14h) → fermeture partielle, pas toute la journée", () => {
