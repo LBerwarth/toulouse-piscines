@@ -22,8 +22,14 @@ export function newsKey(news: Pick<ShortNews, "title" | "text">): string {
   return `${news.title}\n${news.text}`;
 }
 
+/**
+ * Version du prompt/schéma, baquée dans le hash : toute évolution invalide le
+ * cache et force une relecture cohérente (les anciennes lignes restent, inertes).
+ */
+const PROMPT_VERSION = 2;
+
 function hashKey(key: string): string {
-  return createHash("sha256").update(key).digest("hex");
+  return createHash("sha256").update(`v${PROMPT_VERSION}\n${key}`).digest("hex");
 }
 
 function model(): string {
@@ -172,9 +178,10 @@ Consignes :
   - "extension" : ouverture prolongée → "close" = nouvelle heure de fermeture (HH:MM).
   - "closure" : fermée toute la journée → "basin" seulement si un seul bassin est visé (ex. « nordique »).
   - "partial_closure" : fermée une partie de la journée → "windows" = plages FERMÉES (HH:MM).
-- Dates : "dates" pour des jours précis énumérés, sinon "from"/"to" (AAAA-MM-JJ, bornes incluses, année déduite de la date de publication). "to" = null si aucune fin n'est annoncée. "weekdays" (0 = lundi … 6 = dimanche) seulement si la mesure ne vaut que certains jours (ex. « le week-end » → [5, 6]).
-- Piscine concernée par l'annonce mais sans mesure d'horaire chiffrée : liste-la avec "measures": [].
-- Actu sans effet sur les horaires d'aucune piscine (recrutement, événement externe…) : "pools": [] et "allPools": [].
+- Dates : "dates" pour des jours précis énumérés, sinon "from"/"to" (AAAA-MM-JJ, bornes incluses, année déduite de la date de publication). "to" = null si aucune fin n'est annoncée. Piscine annoncée fermée sans aucune date (« actuellement fermée ») : closure avec "from" et "to" null. "weekdays" (0 = lundi … 6 = dimanche) seulement si la mesure ne vaut que certains jours (ex. « le week-end » → [5, 6]).
+- Certaines piscines existent en deux variantes saisonnières dans la liste (« été » / « hiver ») : une fermeture « pour la saison estivale » ne vise que la variante « hiver » (c'est elle qui ferme l'été), une fermeture hivernale ne vise que la variante « été ». Ne liste jamais la variante qui fonctionne pendant la saison.
+- Toute piscine explicitement nommée par l'actu doit figurer dans "pools" — avec "measures": [] si l'actu ne modifie pas ses horaires (animation, événement, info pratique).
+- Actu ne nommant aucune piscine et sans effet sur les horaires (recrutement…) : "pools": [] et "allPools": [].
 Réponds uniquement avec le JSON demandé.`;
 }
 
