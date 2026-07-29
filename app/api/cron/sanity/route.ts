@@ -51,6 +51,16 @@ export async function GET(req: Request) {
         problems.push(`confiance faible aujourd'hui pour : ${lowToday.join(", ")}`);
       }
 
+      // Clé Gemini configurée mais des actus restent sans lecture LLM (quota
+      // journalier épuisé, API en panne, réponses invalides) : le repli regex
+      // masque le problème — seul ce contrôle le rend visible.
+      const news = cached.report.news;
+      if (process.env.GEMINI_API_KEY && news && news.read < news.seen) {
+        problems.push(
+          `lectures LLM incomplètes : ${news.read}/${news.seen} actus lues (quota ou API ?)`
+        );
+      }
+
       // Fermée 7 jours sur 7 SANS raison publiée : grille probablement perdue
       // par le parseur (une vraie fermeture longue a toujours une raison).
       const silentAllClosed = cached.report.pools

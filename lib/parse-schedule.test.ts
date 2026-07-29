@@ -720,6 +720,46 @@ describe("analyzeDay — cas réels", () => {
     expect(r.announcements.map((a) => a.title)).not.toContain(caniculeJuillet.title);
   });
 
+  it("lecture LLM : ouverture avancée (« dès 7h ») avance le début du jour", () => {
+    const p = { ...lautrecEte, shorts: [caniculeJuillet] };
+    const llm = new Map([
+      [
+        readingKey,
+        {
+          pools: [
+            {
+              slug: "piscine-toulouse-lautrec",
+              measures: [
+                { kind: "extension" as const, open: "07:00", close: "21:00", from: "2026-07-29" },
+              ],
+            },
+          ],
+          allPools: [],
+        },
+      ],
+    ]);
+    // Mercredi : grille 10h-20h → 7h-21h (ouverture avancée + fermeture repoussée)
+    const mer = analyzeDay(p, today(20260729, 2, true), lautrec, llm);
+    expect(mer.slotsToday).toEqual([{ start: "07:00", end: "21:00" }]);
+    // Une ouverture annoncée PLUS TARDIVE que la grille ne change rien
+    const late = new Map([
+      [
+        readingKey,
+        {
+          pools: [
+            {
+              slug: "piscine-toulouse-lautrec",
+              measures: [{ kind: "extension" as const, open: "11:00", from: "2026-07-29" }],
+            },
+          ],
+          allPools: [],
+        },
+      ],
+    ]);
+    const merLate = analyzeDay(p, today(20260729, 2, true), lautrec, late);
+    expect(merLate.slotsToday[0].start).toBe("10:00");
+  });
+
   it("lecture LLM : fermeture partielle avec jours de semaine, et mesures passées écartées", () => {
     const p = { ...lautrecEte, shorts: [caniculeJuillet] };
     const partial = new Map([

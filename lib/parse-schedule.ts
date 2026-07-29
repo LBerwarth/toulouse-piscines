@@ -717,6 +717,8 @@ interface PoolNews {
   detail: string | null;
   /** Heure de fermeture « HH:MM » si l'actu prolonge l'ouverture, sinon null */
   extendClose: string | null;
+  /** Heure d'ouverture avancée « HH:MM » (lecture LLM uniquement), sinon absent */
+  openFrom?: string | null;
   /** Raison de fermeture si l'actu ferme la piscine TOUTE la journée aujourd'hui */
   closure: string | null;
   /**
@@ -910,6 +912,8 @@ export interface NewsMeasure {
   kind: "extension" | "closure" | "partial_closure";
   /** extension : fermeture repoussée à cette heure */
   close?: string | null;
+  /** extension : ouverture avancée à cette heure */
+  open?: string | null;
   /** partial_closure : plages fermées, retirées des créneaux du jour */
   windows?: { start: string; end: string }[] | null;
   /** closure : bassin précis visé (« nordique »…), null = toute la piscine */
@@ -980,13 +984,15 @@ function poolNewsFromReading(
   if (measures.length > 0 && measures.every((m) => measurePast(m, today))) return null;
 
   let extendClose: string | null = null;
+  let openFrom: string | null = null;
   let closure: string | null = null;
   let closureScope: string | null = null;
   let windows: TimeSlot[] = [];
   for (const m of measures) {
     if (!measureCovers(m, today)) continue;
-    if (m.kind === "extension" && m.close) {
-      if (!extendClose || m.close > extendClose) extendClose = m.close;
+    if (m.kind === "extension") {
+      if (m.close && (!extendClose || m.close > extendClose)) extendClose = m.close;
+      if (m.open && (!openFrom || m.open < openFrom)) openFrom = m.open;
     } else if (m.kind === "closure") {
       closure = news.title;
       closureScope = m.basin ?? null;
@@ -994,11 +1000,13 @@ function poolNewsFromReading(
       windows = windows.concat(m.windows.filter((w) => w.start < w.end));
     }
   }
+  // Fermée toute la journée → l'extension du même jour n'a plus de sens
+  const closedAllDay = closure !== null && closureScope === null;
   return {
     title: news.title,
     detail: newsDetail(news),
-    // Fermée toute la journée → l'extension du même jour n'a plus de sens
-    extendClose: closure && !closureScope ? null : extendClose,
+    extendClose: closedAllDay ? null : extendClose,
+    openFrom: closedAllDay ? null : openFrom,
     closure,
     closureWindow: windows.length > 0 ? mergeSlots(windows) : null,
     closureScope,
@@ -1174,6 +1182,15 @@ function extendClosing(slots: TimeSlot[], close: string): TimeSlot[] {
   return slots.map((s, i) => (i === idx ? { ...s, end: close } : s));
 }
 
+/** Avance le début du premier créneau jusqu'à `open` (jamais après). */
+function advanceOpening(slots: TimeSlot[], open: string): TimeSlot[] {
+  if (slots.length === 0) return slots;
+  let idx = 0;
+  for (let i = 1; i < slots.length; i++) if (slots[i].start < slots[idx].start) idx = i;
+  if (open >= slots[idx].start) return slots;
+  return slots.map((s, i) => (i === idx ? { ...s, start: open } : s));
+}
+
 // ---------------------------------------------------------------------------
 // Analyse principale
 // ---------------------------------------------------------------------------
@@ -1197,6 +1214,11 @@ export function analyzeDay(
   const messages: Announcement[] = news.map((n) => ({ title: n.title, detail: n.detail }));
   const extendTo = news.reduce<string | null>(
     (max, n) => (n.extendClose && (!max || n.extendClose > max) ? n.extendClose : max),
+    null
+  );
+  // Ouverture avancée annoncée (lecture LLM d'une actu) : la plus matinale.
+  const openFrom = news.reduce<string | null>(
+    (min, n) => (n.openFrom && (!min || n.openFrom < min) ? n.openFrom : min),
     null
   );
   // Fermeture « En bref » de TOUTE la piscine (aucun bassin précis nommé) :
@@ -1574,6 +1596,12 @@ export function analyzeDay(
     const before = latestClose();
     for (const b of basins) b.slots = extendClosing(b.slots, target);
     if (latestClose() > before) extendedTo = target;
+  }
+
+  // Ouverture avancée : même logique que l'extension, côté début de journée.
+  // N'ouvre jamais un bassin fermé (advanceOpening ignore les vides).
+  if (openFrom) {
+    for (const b of basins) b.slots = advanceOpening(b.slots, openFrom);
   }
 
   // Horaires canicule de substitution : bandeau dédié, notifiable comme les

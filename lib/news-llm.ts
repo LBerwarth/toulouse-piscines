@@ -27,7 +27,7 @@ export function newsKey(news: Pick<ShortNews, "title" | "text">): string {
  * Version du prompt/schéma, baquée dans le hash : toute évolution invalide le
  * cache et force une relecture cohérente (les anciennes lignes restent, inertes).
  */
-const PROMPT_VERSION = 2;
+const PROMPT_VERSION = 3;
 
 function hashKey(key: string): string {
   return createHash("sha256").update(`v${PROMPT_VERSION}\n${key}`).digest("hex");
@@ -60,6 +60,7 @@ function readMeasure(raw: unknown): NewsMeasure | null {
   if (kind !== "extension" && kind !== "closure" && kind !== "partial_closure") return null;
 
   const close = normTime(o.close);
+  const open = normTime(o.open);
   const windows = Array.isArray(o.windows)
     ? o.windows
         .map((w) => {
@@ -70,7 +71,7 @@ function readMeasure(raw: unknown): NewsMeasure | null {
         .filter((w): w is { start: string; end: string } => w !== null)
     : [];
   // Mesure sans son contenu obligatoire : on la jette plutôt que de deviner
-  if (kind === "extension" && !close) return null;
+  if (kind === "extension" && !close && !open) return null;
   if (kind === "partial_closure" && windows.length === 0) return null;
 
   const dates = Array.isArray(o.dates)
@@ -82,6 +83,7 @@ function readMeasure(raw: unknown): NewsMeasure | null {
   return {
     kind,
     close,
+    open,
     windows: windows.length > 0 ? windows : null,
     basin: typeof o.basin === "string" && o.basin.trim() ? o.basin.trim() : null,
     dates: dates.length > 0 ? dates : null,
@@ -119,6 +121,7 @@ const MEASURE_SCHEMA = {
   properties: {
     kind: { type: "STRING", enum: ["extension", "closure", "partial_closure"] },
     close: { type: "STRING", nullable: true, description: "extension : nouvelle heure de fermeture HH:MM" },
+    open: { type: "STRING", nullable: true, description: "extension : heure d'ouverture avancée HH:MM" },
     windows: {
       type: "ARRAY",
       nullable: true,
@@ -178,7 +181,7 @@ Consignes :
 - Liste dans "pools" chaque piscine de la liste réellement concernée, avec ses mesures propres. Une mesure écrite sur la ligne d'une piscine (y compris entre parenthèses dans son nom) ne vaut que pour elle.
 - "allPools" : mesures valant pour toutes les piscines à la fois (ex. « toutes les piscines seront fermées le 1er mai ») — uniquement si l'actu ne liste pas les piscines une à une.
 - Types de mesures :
-  - "extension" : ouverture prolongée → "close" = nouvelle heure de fermeture (HH:MM).
+  - "extension" : ouverture prolongée ou avancée → "close" = nouvelle heure de fermeture (HH:MM) et/ou "open" = nouvelle heure d'ouverture si elle est avancée (HH:MM).
   - "closure" : fermée toute la journée → "basin" seulement si un seul bassin est visé (ex. « nordique »).
   - "partial_closure" : fermée une partie de la journée → "windows" = plages FERMÉES (HH:MM).
 - Dates : "dates" pour des jours précis énumérés, sinon "from"/"to" (AAAA-MM-JJ, bornes incluses, année déduite de la date de publication). "to" = null si aucune fin n'est annoncée. Piscine annoncée fermée sans aucune date (« actuellement fermée ») : closure avec "from" et "to" null. "weekdays" (0 = lundi … 6 = dimanche) seulement si la mesure ne vaut que certains jours (ex. « le week-end » → [5, 6]).

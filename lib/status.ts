@@ -2,7 +2,7 @@ import { after } from "next/server";
 import { POOLS, poolUrl, type Pool, type PoolEnv } from "./pools";
 import { fetchPoolPage, type PageSections, type SectionLine } from "./scrape";
 import { analyzeDay, type DayStatus, type NewsReadings } from "./parse-schedule";
-import { interpretShorts } from "./news-llm";
+import { interpretShorts, newsKey } from "./news-llm";
 import { getWeekInfo, type TodayInfo } from "./today";
 import { db, isConfigured } from "./supabase";
 
@@ -45,6 +45,12 @@ export interface StatusReport {
   /** Les 7 prochains jours ([0] = aujourd'hui), index communs à PoolStatus.week */
   days: WeekDayRef[];
   pools: PoolStatus[];
+  /**
+   * Couverture des lectures LLM des actus « En bref » : actus uniques vues /
+   * lues. `read < seen` alors que la clé est configurée = quota épuisé ou API
+   * en panne (repli regex silencieux) — surveillé par /api/cron/sanity.
+   */
+  news: { seen: number; read: number };
 }
 
 interface FetchedPool {
@@ -119,7 +125,7 @@ function cronActive(hour: number): boolean {
  * d'une autre version est ignoré : on évite ainsi qu'un déploiement (ou une autre
  * instance partageant la ligne de cache) ne serve des données d'une forme obsolète.
  */
-const CACHE_SCHEMA_VERSION = 2;
+const CACHE_SCHEMA_VERSION = 3;
 
 /**
  * Applique `fn` aux éléments en gardant au plus `limit` requêtes en vol, dans
@@ -154,18 +160,21 @@ async function buildReport(fresh: boolean): Promise<StatusReport> {
   // Le bloc « En bref » est identique sur toutes les pages : une seule lecture
   // LLM, mise en cache par actu (cf. lib/news-llm.ts). Best-effort : sans clé,
   // sans réseau ou sur réponse invalide, analyzeDay retombe sur ses regex.
+  const shorts = fetched.flatMap((f) => f.page?.shorts ?? []);
   let llmNews: NewsReadings | undefined;
   try {
-    llmNews = await interpretShorts(fetched.flatMap((f) => f.page?.shorts ?? []));
+    llmNews = await interpretShorts(shorts);
   } catch (err) {
     console.error("[status] lecture LLM sautée :", err instanceof Error ? err.message : err);
   }
   const pools = fetched.map((f) => toPoolStatus(f, week, llmNews));
+  const seen = new Set(shorts.filter((s) => s.title).map(newsKey)).size;
   return {
     updatedAt: new Date().toISOString(),
     version: CACHE_SCHEMA_VERSION,
     days: week.map(({ dateKey, weekday }) => ({ dateKey, weekday })),
     pools,
+    news: { seen, read: llmNews?.size ?? 0 },
   };
 }
 

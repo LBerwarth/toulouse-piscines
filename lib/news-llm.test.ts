@@ -26,6 +26,23 @@ describe("parseReading", () => {
     expect(r!.pools[1].measures[1].close).toBe("09:30");
   });
 
+  it("extension : « open » seul suffit, sans close ni open elle est jetée", () => {
+    const r = parseReading({
+      pools: [
+        {
+          slug: "piscine-papus",
+          measures: [
+            { kind: "extension", open: "7:00" },
+            { kind: "extension" }, // ni close ni open → jetée
+          ],
+        },
+      ],
+      allPools: [],
+    });
+    expect(r!.pools[0].measures).toHaveLength(1);
+    expect(r!.pools[0].measures[0]).toMatchObject({ kind: "extension", open: "07:00", close: null });
+  });
+
   it("écarte le déchet : slug inconnu, heures invalides, mesures incomplètes", () => {
     const r = parseReading({
       pools: [
