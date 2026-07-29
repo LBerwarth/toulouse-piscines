@@ -17,8 +17,10 @@ export interface ShortNews {
   /**
    * Piscines explicitement citées par un lien /annuaire/<slug>, avec le texte
    * qui suit le lien (« : ouverture jusqu'à 20h ») d'où l'on tire l'horaire.
+   * `line` = la ligne complète de l'actu (texte du lien inclus, arrêtée au saut
+   * de ligne) — la mesure d'une piscine peut être glissée dans le lien même.
    */
-  pools: { slug: string; after: string }[];
+  pools: { slug: string; after: string; line?: string }[];
 }
 
 export interface PageSections {
@@ -200,18 +202,28 @@ export function parsePoolPage(html: string): PageSections {
     const text = bodyEl.length > 0 ? blockText(bodyEl) : clean(item.text());
     if (!title && !text) return;
 
-    const pools: { slug: string; after: string }[] = [];
+    const pools: { slug: string; after: string; line?: string }[] = [];
     item.find("a[href*='/annuaire/']").each((__, a) => {
       const slug = ($(a).attr("href") ?? "").match(/\/annuaire\/([a-z0-9-]+)/)?.[1];
       if (!slug || pools.some((p) => p.slug === slug)) return;
       // Texte qui suit le lien jusqu'au lien suivant (« : ouverture jusqu'à 20h »).
       // On parcourt les nœuds frères bruts pour capter aussi les nœuds texte.
       let after = "";
+      // Ligne complète : le lien porte parfois la mesure dans son propre texte
+      // (« Piscine Alex Jany (fermeture technique mercredi 29 juillet) : »).
+      let line = $(a).text();
+      let lineDone = false;
       for (let n = a.next; n; n = n.next) {
         if (n.type === "tag" && n.name === "a") break;
-        after += $(n).text();
+        const t = $(n).text();
+        after += t;
+        if (!lineDone) {
+          const nl = t.indexOf("\n");
+          line += nl >= 0 ? t.slice(0, nl) : t;
+          lineDone = nl >= 0;
+        }
       }
-      pools.push({ slug, after: clean(after) });
+      pools.push({ slug, after: clean(after), line: clean(line) });
     });
 
     shorts.push({ date, title, text: text.slice(0, 1500), pools });

@@ -872,6 +872,34 @@ const ALL_POOLS_RE =
   /\b(?:toutes les piscines|l'ensemble des piscines|les piscines (?:municipales|toulousaines))\b/;
 
 /**
+ * Texte de l'actu SANS les lignes des autres piscines citées. Dans une
+ * actu-liste (canicule), chaque ligne ne vaut que pour la piscine qu'elle
+ * nomme : la « fermeture technique » d'Alex Jany ou la plage « de 12h à 21h »
+ * d'Yvonne Godard ne doivent pas être lues comme valant pour les autres.
+ */
+function withoutOtherPoolLines(
+  news: ShortNews,
+  linked: { slug: string; after: string; line?: string }
+): string {
+  const others = news.pools
+    .filter((p) => p.slug !== linked.slug)
+    .map((p) => norm(p.line ?? p.after).trim())
+    // Un extrait trop court supprimerait des lignes par simple coïncidence.
+    .filter((s) => s.length >= 8);
+  if (others.length === 0) return news.text;
+  return news.text
+    .split("\n")
+    .filter((l) => !others.some((o) => norm(l).includes(o)))
+    .join("\n");
+}
+
+/** Clause(s) d'une ligne contenant le motif — découpage aux parenthèses, tirets et point-virgules. */
+function clauseWith(re: RegExp, line: string): string | null {
+  const clauses = line.split(/[();]|\s[-–—]\s/).filter((c) => re.test(norm(c)));
+  return clauses.length > 0 ? clauses.join(" ; ") : null;
+}
+
+/**
  * Actualités « En bref » concernant cette piscine et applicables aujourd'hui.
  * Le bloc est identique sur toutes les pages : on ne retient une actu que si
  * elle cite la piscine, soit par un lien /annuaire/<slug> (extensions
@@ -904,33 +932,54 @@ function collectPoolNews(
     if (!linked && !named && !collective) continue;
     if (out.some((n) => n.title === news.title)) continue;
 
-    if (/\bferm/.test(hay)) {
+    // Actu-liste : on n'interprète que le texte concernant CETTE piscine.
+    const scopedText = linked ? withoutOtherPoolLines(news, linked) : news.text;
+    const hayScoped = norm(`${news.title} ${scopedText}`);
+
+    // Fermeture passée mais actu-liste : la même ligne peut aussi porter une
+    // extension toujours en cours (« (fermeture technique mercredi 29
+    // juillet) : ouverture jusqu'à 21h ») → on retombe sur l'extension.
+    let closurePast = false;
+    if (/\bferm/.test(hayScoped)) {
       // Une fermeture saisonnière ne vise pas la piscine qui FONCTIONNE pendant
       // cette saison : « pour la saison estivale » ferme la piscine d'hiver
       // (fermée l'été), pas celle d'été — et inversement.
-      if ((season === "ete" && /estival/.test(hay)) || (season === "hiver" && /hivernal/.test(hay)))
+      if (
+        (season === "ete" && /estival/.test(hayScoped)) ||
+        (season === "hiver" && /hivernal/.test(hayScoped))
+      )
         continue;
       // Fermeture : ne FERME que les jours couverts. Déjà passée → écartée (la
       // mairie laisse l'actu en ligne après coup) ; encore à venir → gardée en
       // bandeau sans fermer le jour, et la notification part dès l'annonce.
-      const scope = closureDates(news.text, today.year) ?? closureDates(news.title, today.year);
-      if (scope && today.dateKey > scopeEnd(scope)) continue;
-      const applies = coversDay(scope, today.dateKey);
-      // Fermeture partielle (« fermée … de 12h à 14h ») : on retire ce créneau
-      // plutôt que de fermer toute la journée. On n'y voit une fermeture
-      // partielle que si une plage horaire est citée ET que le texte ne décrit
-      // pas une fermeture de toute la journée/semaine.
-      const fullDay = /toute la journee|toute la semaine|journee complete|jusqu'a nouvel ordre/.test(hay);
-      const windows = fullDay ? [] : mergeSlots(parseTimeRanges(`${news.title}\n${news.text}`));
-      out.push({
-        title: news.title,
-        detail: newsDetail(news),
-        extendClose: null,
-        closure: applies && windows.length === 0 ? news.title : null,
-        closureWindow: applies && windows.length > 0 ? windows : null,
-        closureScope: windows.length > 0 ? null : basinClosureScope(hay),
-      });
-      continue;
+      // Ses dates sont d'abord cherchées dans la clause « ferm… » de la ligne
+      // de la piscine — le « à compter du » général vaut pour les autres mesures.
+      const fermClause = linked ? clauseWith(/ferm/, linked.line ?? linked.after) : null;
+      const scope =
+        (fermClause ? closureDates(fermClause, today.year) : null) ??
+        closureDates(scopedText, today.year) ??
+        closureDates(news.title, today.year);
+      closurePast = scope !== null && today.dateKey > scopeEnd(scope);
+      if (closurePast && (!linked || !parseExtensionClose(linked.after))) continue;
+      if (!closurePast) {
+        const applies = coversDay(scope, today.dateKey);
+        // Fermeture partielle (« fermée … de 12h à 14h ») : on retire ce créneau
+        // plutôt que de fermer toute la journée. On n'y voit une fermeture
+        // partielle que si une plage horaire est citée ET que le texte ne décrit
+        // pas une fermeture de toute la journée/semaine.
+        const fullDay =
+          /toute la journee|toute la semaine|journee complete|jusqu'a nouvel ordre/.test(hayScoped);
+        const windows = fullDay ? [] : mergeSlots(parseTimeRanges(`${news.title}\n${scopedText}`));
+        out.push({
+          title: news.title,
+          detail: newsDetail(news),
+          extendClose: null,
+          closure: applies && windows.length === 0 ? news.title : null,
+          closureWindow: applies && windows.length > 0 ? windows : null,
+          closureScope: windows.length > 0 ? null : basinClosureScope(hayScoped),
+        });
+        continue;
+      }
     }
 
     // Ouverture retardée / indisponibilité annoncée SANS le mot « fermeture »
@@ -938,15 +987,18 @@ function collectPoolNews(
     // même effet qu'une fermeture partielle. L'annonce reste affichée tous les
     // jours (elle porte sa date) ; les créneaux ne sont retirés que le(s)
     // jour(s) couvert(s) — sinon la grille contredit la notification envoyée.
-    const lateOpen = hay.match(
+    const lateOpen = hayScoped.match(
       /(?:ouvrira|ouverture)[^.]{0,80}?a partir de\s+(\d{1,2})\s*h\s*([0-5]\d)?/
     );
-    if (lateOpen || /pas accessible|inaccessible|ouverture (?:retardee|decalee)/.test(hay)) {
-      const windows = parseTimeRanges(`${news.title}\n${news.text}`);
+    if (
+      !closurePast &&
+      (lateOpen || /pas accessible|inaccessible|ouverture (?:retardee|decalee)/.test(hayScoped))
+    ) {
+      const windows = parseTimeRanges(`${news.title}\n${scopedText}`);
       if (lateOpen && Number(lateOpen[1]) <= 24) {
         windows.push({ start: "00:00", end: fmt(Number(lateOpen[1]), Number(lateOpen[2] ?? 0)) });
       }
-      const scope = closureDates(news.text, today.year) ?? closureDates(news.title, today.year);
+      const scope = closureDates(scopedText, today.year) ?? closureDates(news.title, today.year);
       const applies = coversDay(scope, today.dateKey);
       out.push({
         title: news.title,
@@ -964,7 +1016,7 @@ function collectPoolNews(
     // seulement collective s'arrête ici : un recrutement ou une info générale
     // n'a pas à s'afficher en bandeau sur les douze piscines.
     if (!linked && !named) continue;
-    const range = parseDateRange(news.text, today.year);
+    const range = parseDateRange(scopedText, today.year);
     if (range && (today.dateKey < range.from || today.dateKey > range.to)) continue;
     out.push({
       title: news.title,

@@ -98,8 +98,41 @@ describe("parsePoolPage", () => {
     expect(s.pools).toContainEqual({
       slug: "piscine-chapou-ete",
       after: ": ouverture jusqu'à 20h",
+      line: "Piscine Chapou : ouverture jusqu'à 20h",
     });
     expect(s.pools.find((p) => p.slug === "piscine-alfred-nakache-ete")?.after).toMatch(/20h30/);
+  });
+
+  it("« En bref » : la ligne complète d'une piscine inclut la mesure portée par le lien", () => {
+    // Canicule du 28/07/2026 : la fermeture technique d'Alex Jany est DANS le
+    // texte du lien, et chaque ligne s'arrête au <br> (pas de fuite entre piscines)
+    const html = `
+      <html><body>
+        <div class="block__shorts">
+          <ul class="block__shorts__list">
+            <li class="block__shorts__list-item paragraph">
+              <div class="title"><h3>Canicule : mesures exceptionnelles</h3></div>
+              <div class="text-formatted">
+                <p>Extension des horaires :<br>
+                  <a href="https://metropole.toulouse.fr/annuaire/piscine-alex-jany">Piscine Alex Jany <strong>(fermeture technique mercredi 29 juillet) </strong>:</a> ouverture jusqu'à 21h&nbsp;<br>
+                  <a href="https://metropole.toulouse.fr/annuaire/piscine-toulouse-lautrec">Piscine Toulouse Lautrec :</a> ouverture jusqu'à 21h</p>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </body></html>`;
+
+    const s = parsePoolPage(html).shorts[0];
+    expect(s.pools).toContainEqual({
+      slug: "piscine-alex-jany",
+      after: "ouverture jusqu'à 21h",
+      line: "Piscine Alex Jany (fermeture technique mercredi 29 juillet) : ouverture jusqu'à 21h",
+    });
+    expect(s.pools).toContainEqual({
+      slug: "piscine-toulouse-lautrec",
+      after: "ouverture jusqu'à 21h",
+      line: "Piscine Toulouse Lautrec : ouverture jusqu'à 21h",
+    });
   });
 
   it("sépare les jours collés par des <br> dans un même paragraphe", () => {

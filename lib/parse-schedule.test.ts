@@ -582,6 +582,91 @@ describe("analyzeDay — cas réels", () => {
     expect(sam.extendedTo).toBeNull(); // week-end déjà 20h30 : extension sans effet
   });
 
+  // Reproduit l'actu canicule du 28/07/2026 : liste par piscine, où la ligne
+  // d'Alex Jany porte une fermeture technique et celle d'Yvonne Godard une
+  // plage horaire — des mesures qui ne valent que pour leur propre ligne.
+  const caniculeJuillet: ShortNews = {
+    date: "2026-07-28",
+    title: "Canicule : mesures exceptionnelles dans les piscines municipales",
+    text:
+      "En raison du passage en alerte canicule, des mesures exceptionnelles sont mises en place " +
+      "dans les piscines municipales à compter du mercredi 29 juillet :\n" +
+      "Tarif unique : 1 € l'entrée dans toutes les piscines\n" +
+      "Extension des horaires à partir du mercredi 29 juillet :\n" +
+      "Piscine Papus : ouverture jusqu'à 21h\n" +
+      "Piscine Yvonne Godard : ouverture jusqu'à 21h et ouverture exceptionnelle de 12h à 21h, le week-end\n" +
+      "Piscine Bellevue nordique : ouverture jusqu'à 21h\n" +
+      "Piscine Alex Jany (à partir du jeudi 30 juillet - fermeture technique mercredi 29 juillet) : ouverture jusqu'à 21h\n" +
+      "Piscine Toulouse Lautrec : ouverture jusqu'à 21h\n" +
+      "La Ramée Plage : ouverture jusqu'à 20h",
+    pools: [
+      {
+        slug: "piscine-papus",
+        after: "ouverture jusqu'à 21h",
+        line: "Piscine Papus : ouverture jusqu'à 21h",
+      },
+      {
+        slug: "piscine-yvonne-godard",
+        after: "ouverture jusqu'à 21h et ouverture exceptionnelle de 12h à 21h, le week-end",
+        line: "Piscine Yvonne Godard : ouverture jusqu'à 21h et ouverture exceptionnelle de 12h à 21h, le week-end",
+      },
+      {
+        slug: "piscine-bellevue",
+        after: "nordique : ouverture jusqu'à 21h",
+        line: "Piscine Bellevue nordique : ouverture jusqu'à 21h",
+      },
+      {
+        slug: "piscine-alex-jany",
+        after: "ouverture jusqu'à 21h",
+        line: "Piscine Alex Jany (à partir du jeudi 30 juillet - fermeture technique mercredi 29 juillet) : ouverture jusqu'à 21h",
+      },
+      {
+        slug: "piscine-toulouse-lautrec",
+        after: "ouverture jusqu'à 21h",
+        line: "Piscine Toulouse Lautrec : ouverture jusqu'à 21h",
+      },
+    ],
+  };
+
+  // Grille estivale de Toulouse Lautrec (semaine 10h-20h, week-end 12h-19h)
+  const lautrecEte = page([
+    {
+      title: "Horaires d'été à partir du 4 juillet 2026",
+      lines: [
+        heading("Du 4 juillet au 30 août"),
+        text("Du lundi au vendredi, de 10h à 20h"),
+        text("Samedi et dimanche , de 12h à 19h"),
+        text("En cas d'alerte orange canicule, fermeture retardée d'1h"),
+      ],
+    },
+  ]);
+  const lautrec = { slug: "piscine-toulouse-lautrec", name: "Toulouse Lautrec" };
+
+  it("actu-liste : la fermeture technique d'Alex Jany ne ferme pas Toulouse Lautrec", () => {
+    const p = { ...lautrecEte, shorts: [caniculeJuillet] };
+    // Mercredi 29 juillet : 10h-20h prolongé à 21h — ni fermé, ni tronqué à 12h
+    const mer = analyzeDay(p, today(20260729, 2, true), lautrec);
+    expect(mer.openToday).toBe(true);
+    expect(mer.slotsToday).toEqual([{ start: "10:00", end: "21:00" }]);
+    expect(mer.closureReason).toBeNull();
+    // Samedi 1er août : 12h-19h prolongé à 21h — la plage « de 12h à 21h,
+    // le week-end » d'Yvonne Godard ne doit pas être retirée des créneaux
+    const sam = analyzeDay(p, today(20260801, 5, true), lautrec);
+    expect(sam.openToday).toBe(true);
+    expect(sam.slotsToday).toEqual([{ start: "12:00", end: "21:00" }]);
+  });
+
+  it("actu-liste : Alex Jany fermé le seul jour de sa fermeture technique, prolongé ensuite", () => {
+    const alexJany = { slug: "piscine-alex-jany", name: "Alex Jany" };
+    const p = { ...lautrecEte, shorts: [caniculeJuillet] };
+    const mer = analyzeDay(p, today(20260729, 2, true), alexJany);
+    expect(mer.openToday).toBe(false);
+    expect(mer.closureReason).toMatch(/canicule/i);
+    const jeu = analyzeDay(p, today(20260730, 3, true), alexJany);
+    expect(jeu.openToday).toBe(true);
+    expect(jeu.slotsToday).toEqual([{ start: "10:00", end: "21:00" }]);
+  });
+
   it("piscine non citée par l'actu « En bref » → ni extension ni annonce", () => {
     const p = { ...chapou, shorts: [caniculeShort] };
     const r = analyzeDay(p, today(20260619, 4), {
