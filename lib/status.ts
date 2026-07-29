@@ -1,7 +1,8 @@
 import { after } from "next/server";
 import { POOLS, poolUrl, type Pool, type PoolEnv } from "./pools";
-import { fetchPoolPage, type SectionLine } from "./scrape";
-import { analyzeDay, type DayStatus } from "./parse-schedule";
+import { fetchPoolPage, type PageSections, type SectionLine } from "./scrape";
+import { analyzeDay, type DayStatus, type NewsReadings } from "./parse-schedule";
+import { interpretShorts } from "./news-llm";
 import { getWeekInfo, type TodayInfo } from "./today";
 import { db, isConfigured } from "./supabase";
 
@@ -46,28 +47,36 @@ export interface StatusReport {
   pools: PoolStatus[];
 }
 
-async function getPoolStatus(pool: Pool, week: TodayInfo[], fresh: boolean): Promise<PoolStatus> {
-  const base = { slug: pool.slug, name: pool.name, url: poolUrl(pool), env: pool.env };
+interface FetchedPool {
+  pool: Pool;
+  page: PageSections | null;
+  error: string | null;
+}
+
+async function fetchPool(pool: Pool, fresh: boolean): Promise<FetchedPool> {
   try {
-    const page = await fetchPoolPage(base.url, { fresh });
-    const days = week.map((d) => analyzeDay(page, d, pool));
-    // Les corps de texte bruts (section.body) ne servent qu'à l'analyse
-    // côté serveur : on ne les envoie pas au navigateur.
-    const raw: PoolInfo = {
-      intro: page.intro,
-      notices: page.notices,
-      sections: page.sections.map(({ title, lines }) => ({ title, lines })),
-    };
-    return { ...base, ok: true, error: null, week: days, raw };
+    return { pool, page: await fetchPoolPage(poolUrl(pool), { fresh }), error: null };
   } catch (err) {
-    return {
-      ...base,
-      ok: false,
-      error: err instanceof Error ? err.message : String(err),
-      week: null,
-      raw: null,
-    };
+    return { pool, page: null, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+function toPoolStatus(
+  { pool, page, error }: FetchedPool,
+  week: TodayInfo[],
+  llmNews: NewsReadings | undefined
+): PoolStatus {
+  const base = { slug: pool.slug, name: pool.name, url: poolUrl(pool), env: pool.env };
+  if (!page) return { ...base, ok: false, error, week: null, raw: null };
+  const days = week.map((d) => analyzeDay(page, d, pool, llmNews));
+  // Les corps de texte bruts (section.body) ne servent qu'à l'analyse
+  // côté serveur : on ne les envoie pas au navigateur.
+  const raw: PoolInfo = {
+    intro: page.intro,
+    notices: page.notices,
+    sections: page.sections.map(({ title, lines }) => ({ title, lines })),
+  };
+  return { ...base, ok: true, error: null, week: days, raw };
 }
 
 /**
@@ -141,9 +150,17 @@ const FETCH_CONCURRENCY = 4;
 /** Scrape les 12 pages et construit le rapport. `fresh` force une requête réseau. */
 async function buildReport(fresh: boolean): Promise<StatusReport> {
   const week = await getWeekInfo();
-  const pools = await mapWithConcurrency(POOLS, FETCH_CONCURRENCY, (p) =>
-    getPoolStatus(p, week, fresh)
-  );
+  const fetched = await mapWithConcurrency(POOLS, FETCH_CONCURRENCY, (p) => fetchPool(p, fresh));
+  // Le bloc « En bref » est identique sur toutes les pages : une seule lecture
+  // LLM, mise en cache par actu (cf. lib/news-llm.ts). Best-effort : sans clé,
+  // sans réseau ou sur réponse invalide, analyzeDay retombe sur ses regex.
+  let llmNews: NewsReadings | undefined;
+  try {
+    llmNews = await interpretShorts(fetched.flatMap((f) => f.page?.shorts ?? []));
+  } catch (err) {
+    console.error("[status] lecture LLM sautée :", err instanceof Error ? err.message : err);
+  }
+  const pools = fetched.map((f) => toPoolStatus(f, week, llmNews));
   return {
     updatedAt: new Date().toISOString(),
     version: CACHE_SCHEMA_VERSION,

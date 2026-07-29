@@ -8,11 +8,22 @@
 import { POOLS, poolUrl } from "../lib/pools";
 import { fetchPoolPage } from "../lib/scrape";
 import { analyzeDay } from "../lib/parse-schedule";
+import { interpretShorts, newsKey } from "../lib/news-llm";
 import { getWeekInfo } from "../lib/today";
 
 const DAY_SHORT = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"];
 
 const filter = process.argv[2]?.toLowerCase();
+
+// GEMINI_API_KEY vit dans .env.local (non chargé par tsx)
+try {
+  process.loadEnvFile(".env.local");
+} catch {}
+console.log(
+  process.env.GEMINI_API_KEY
+    ? `Lecture LLM : active (${process.env.GEMINI_MODEL ?? "gemini-flash-latest"})`
+    : "Lecture LLM : inactive (GEMINI_API_KEY absent) — heuristiques regex seules"
+);
 
 const week = await getWeekInfo();
 console.log(
@@ -24,6 +35,8 @@ for (const pool of POOLS) {
   if (filter && !pool.slug.includes(filter)) continue;
   try {
     const page = await fetchPoolPage(poolUrl(pool));
+    // Mémo interne : un seul appel réseau par actu pour toute la boucle
+    const llm = await interpretShorts(page.shorts);
     console.log(`━━━ ${pool.name} ━━━`);
     if (filter) {
       console.log(`  intro: ${page.intro.slice(0, 300)}`);
@@ -31,6 +44,8 @@ for (const pool of POOLS) {
       for (const s of page.shorts) {
         console.log(`  en bref [${s.date ?? "?"}]: ${s.title}`);
         for (const p of s.pools) console.log(`    → ${p.slug}: ${p.after.slice(0, 60)}`);
+        const reading = llm.get(newsKey(s));
+        if (reading) console.log(`    lecture LLM: ${JSON.stringify(reading)}`);
       }
       for (const s of page.sections) {
         console.log(`  section « ${s.title} »`);
@@ -38,7 +53,7 @@ for (const pool of POOLS) {
       }
     }
     for (const day of week) {
-      const st = analyzeDay(page, day, pool);
+      const st = analyzeDay(page, day, pool, llm);
       const slots = st.slotsToday.map((s) => `${s.start}-${s.end}`).join(" ");
       const flags = [
         st.confidence === "low" ? "CONFIANCE FAIBLE" : "",

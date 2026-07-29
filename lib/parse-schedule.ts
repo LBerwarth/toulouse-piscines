@@ -899,6 +899,112 @@ function clauseWith(re: RegExp, line: string): string | null {
   return clauses.length > 0 ? clauses.join(" ; ") : null;
 }
 
+// ---------------------------------------------------------------------------
+// Lecture LLM des actus « En bref » — types et application. L'appel au modèle
+// vit dans lib/news-llm.ts (serveur) ; ici on ne fait que consommer sa lecture,
+// qui PRIME sur les heuristiques regex de collectPoolNews quand elle existe.
+// ---------------------------------------------------------------------------
+
+/** Mesure extraite d'une actu par le LLM. Dates « AAAA-MM-JJ », heures « HH:MM ». */
+export interface NewsMeasure {
+  kind: "extension" | "closure" | "partial_closure";
+  /** extension : fermeture repoussée à cette heure */
+  close?: string | null;
+  /** partial_closure : plages fermées, retirées des créneaux du jour */
+  windows?: { start: string; end: string }[] | null;
+  /** closure : bassin précis visé (« nordique »…), null = toute la piscine */
+  basin?: string | null;
+  /** Jours exacts d'application — prioritaire sur from/to */
+  dates?: string[] | null;
+  from?: string | null;
+  /** null = sans fin annoncée (l'actu se retire quand la mairie la supprime) */
+  to?: string | null;
+  /** Jours de semaine visés (0 = lundi … 6 = dimanche), null = tous */
+  weekdays?: number[] | null;
+}
+
+/** Lecture d'une actu entière : quelles piscines, quelles mesures. */
+export interface NewsReading {
+  pools: { slug: string; measures: NewsMeasure[] }[];
+  /** Mesures valant pour toutes les piscines (actu collective sans liste) */
+  allPools: NewsMeasure[];
+}
+
+/** Lectures LLM par actu, indexées par `«titre»\n«texte»` (cf. newsKey). */
+export type NewsReadings = Map<string, NewsReading>;
+
+/** « 2026-07-29 » → 20260729, null si autre forme. */
+function isoKey(s: string | null | undefined): number | null {
+  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  return Number(s.replace(/-/g, ""));
+}
+
+function measureDates(m: NewsMeasure): number[] {
+  return (m.dates ?? []).map(isoKey).filter((d): d is number => d !== null);
+}
+
+/** La mesure s'applique-t-elle ce jour-là ? */
+function measureCovers(m: NewsMeasure, today: TodayInfo): boolean {
+  if (m.weekdays && m.weekdays.length > 0 && !m.weekdays.includes(today.weekday)) return false;
+  const dates = measureDates(m);
+  if (dates.length > 0) return dates.includes(today.dateKey);
+  const from = isoKey(m.from) ?? 0;
+  const to = isoKey(m.to) ?? 99999999;
+  return today.dateKey >= from && today.dateKey <= to;
+}
+
+/** Vrai si la mesure est entièrement passée (dernier jour couvert révolu). */
+function measurePast(m: NewsMeasure, today: TodayInfo): boolean {
+  const dates = measureDates(m);
+  if (dates.length > 0) return Math.max(...dates) < today.dateKey;
+  const to = isoKey(m.to);
+  return to !== null && to < today.dateKey;
+}
+
+/**
+ * PoolNews du jour d'après la lecture LLM. null = l'actu ne concerne pas cette
+ * piscine, ou toutes ses mesures sont passées (la mairie laisse l'actu en ligne
+ * après coup — même règle que le chemin regex). Des mesures vides = actu
+ * informative : bandeau + notification, sans effet sur les créneaux.
+ */
+function poolNewsFromReading(
+  news: ShortNews,
+  reading: NewsReading,
+  slug: string,
+  today: TodayInfo
+): PoolNews | null {
+  const measures =
+    reading.pools.find((p) => p.slug === slug)?.measures ??
+    (reading.allPools.length > 0 ? reading.allPools : null);
+  if (!measures) return null;
+  if (measures.length > 0 && measures.every((m) => measurePast(m, today))) return null;
+
+  let extendClose: string | null = null;
+  let closure: string | null = null;
+  let closureScope: string | null = null;
+  let windows: TimeSlot[] = [];
+  for (const m of measures) {
+    if (!measureCovers(m, today)) continue;
+    if (m.kind === "extension" && m.close) {
+      if (!extendClose || m.close > extendClose) extendClose = m.close;
+    } else if (m.kind === "closure") {
+      closure = news.title;
+      closureScope = m.basin ?? null;
+    } else if (m.kind === "partial_closure" && m.windows) {
+      windows = windows.concat(m.windows.filter((w) => w.start < w.end));
+    }
+  }
+  return {
+    title: news.title,
+    detail: newsDetail(news),
+    // Fermée toute la journée → l'extension du même jour n'a plus de sens
+    extendClose: closure && !closureScope ? null : extendClose,
+    closure,
+    closureWindow: windows.length > 0 ? mergeSlots(windows) : null,
+    closureScope,
+  };
+}
+
 /**
  * Actualités « En bref » concernant cette piscine et applicables aujourd'hui.
  * Le bloc est identique sur toutes les pages : on ne retient une actu que si
@@ -910,7 +1016,8 @@ function clauseWith(re: RegExp, line: string): string | null {
 function collectPoolNews(
   shorts: ShortNews[],
   today: TodayInfo,
-  pool: { slug: string; name?: string } | undefined
+  pool: { slug: string; name?: string } | undefined,
+  llmNews?: NewsReadings
 ): PoolNews[] {
   if (!pool) return [];
   // La mairie ne reprend pas les qualificatifs du nom dans ses actus : ni le
@@ -922,6 +1029,15 @@ function collectPoolNews(
   const out: PoolNews[] = [];
   for (const news of shorts) {
     if (!news.title) continue;
+    // Lecture LLM disponible : elle fait foi — piscines concernées et mesures
+    // comprises — à la place des heuristiques regex ci-dessous.
+    const reading = llmNews?.get(`${news.title}\n${news.text}`);
+    if (reading) {
+      if (out.some((n) => n.title === news.title)) continue;
+      const read = poolNewsFromReading(news, reading, pool.slug, today);
+      if (read) out.push(read);
+      continue;
+    }
     const hay = norm(`${news.title} ${news.text}`);
     const linked = news.pools.find((p) => p.slug === pool.slug);
     const named = name.length > 0 && hay.includes(name);
@@ -1068,7 +1184,8 @@ const NOISE_RE = /caisse|evacuation|bassin et les plages|jours? feries?/;
 export function analyzeDay(
   page: PageSections,
   today: TodayInfo,
-  pool?: { slug: string; name?: string }
+  pool?: { slug: string; name?: string },
+  llmNews?: NewsReadings
 ): DayStatus {
   const allTexts = [page.intro, ...page.notices];
   const alerts = extractAlerts([...allTexts, ...page.sections.map((s) => s.body)]);
@@ -1076,7 +1193,7 @@ export function analyzeDay(
   // Actualités « En bref » concernant cette piscine ce jour-là (affichées même
   // si la piscine est fermée). `extendTo` = la fermeture la plus tardive qu'une
   // actu prolonge ; `enBrefClosure` = une fermeture annoncée applicable ce jour.
-  const news = collectPoolNews(page.shorts ?? [], today, pool);
+  const news = collectPoolNews(page.shorts ?? [], today, pool, llmNews);
   const messages: Announcement[] = news.map((n) => ({ title: n.title, detail: n.detail }));
   const extendTo = news.reduce<string | null>(
     (max, n) => (n.extendClose && (!max || n.extendClose > max) ? n.extendClose : max),

@@ -667,6 +667,95 @@ describe("analyzeDay — cas réels", () => {
     expect(jeu.slotsToday).toEqual([{ start: "10:00", end: "21:00" }]);
   });
 
+  // Lecture LLM (cf. lib/news-llm.ts) : quand elle existe pour une actu, elle
+  // remplace les heuristiques regex — piscines concernées et mesures comprises.
+  const readingKey = `${caniculeJuillet.title}\n${caniculeJuillet.text}`;
+
+  it("lecture LLM : mesures par piscine appliquées à la place des regex", () => {
+    const p = { ...lautrecEte, shorts: [caniculeJuillet] };
+    const llm = new Map([
+      [
+        readingKey,
+        {
+          pools: [
+            {
+              slug: "piscine-toulouse-lautrec",
+              measures: [{ kind: "extension" as const, close: "21:00", from: "2026-07-29" }],
+            },
+            {
+              slug: "piscine-alex-jany",
+              measures: [
+                { kind: "closure" as const, dates: ["2026-07-29"] },
+                { kind: "extension" as const, close: "21:00", from: "2026-07-30" },
+              ],
+            },
+          ],
+          allPools: [],
+        },
+      ],
+    ]);
+    const lautrecJour = analyzeDay(p, today(20260729, 2, true), lautrec, llm);
+    expect(lautrecJour.slotsToday).toEqual([{ start: "10:00", end: "21:00" }]);
+    expect(lautrecJour.announcements.map((a) => a.title)).toContain(caniculeJuillet.title);
+    // La veille, l'extension ne s'applique pas encore — bandeau seul
+    const veille = analyzeDay(p, today(20260728, 1, true), lautrec, llm);
+    expect(veille.slotsToday).toEqual([{ start: "10:00", end: "20:00" }]);
+
+    const alexJany = { slug: "piscine-alex-jany", name: "Alex Jany" };
+    const mer = analyzeDay(p, today(20260729, 2, true), alexJany, llm);
+    expect(mer.openToday).toBe(false);
+    const jeu = analyzeDay(p, today(20260730, 3, true), alexJany, llm);
+    expect(jeu.slotsToday).toEqual([{ start: "10:00", end: "21:00" }]);
+  });
+
+  it("lecture LLM : piscine jugée non concernée → ni mesure ni bandeau, malgré le lien", () => {
+    const p = { ...lautrecEte, shorts: [caniculeJuillet] };
+    const llm = new Map([[readingKey, { pools: [], allPools: [] }]]);
+    // L'actu cite Toulouse Lautrec par lien, mais la lecture dit « personne » :
+    // pas de bandeau pour CETTE actu. La règle canicule de la grille (+1h),
+    // elle, s'applique toujours (l'épisode reste déclaré) avec son annonce
+    // synthétique propre.
+    const r = analyzeDay(p, today(20260729, 2, true), lautrec, llm);
+    expect(r.slotsToday).toEqual([{ start: "10:00", end: "21:00" }]);
+    expect(r.announcements.map((a) => a.title)).not.toContain(caniculeJuillet.title);
+  });
+
+  it("lecture LLM : fermeture partielle avec jours de semaine, et mesures passées écartées", () => {
+    const p = { ...lautrecEte, shorts: [caniculeJuillet] };
+    const partial = new Map([
+      [
+        readingKey,
+        {
+          pools: [
+            {
+              slug: "piscine-toulouse-lautrec",
+              measures: [
+                {
+                  kind: "partial_closure" as const,
+                  windows: [{ start: "12:00", end: "14:00" }],
+                  weekdays: [5, 6],
+                  from: "2026-07-29",
+                  to: "2026-08-02",
+                },
+              ],
+            },
+          ],
+          allPools: [],
+        },
+      ],
+    ]);
+    // Samedi 1er août (weekday 5) : 12h-19h moins la plage fermée 12h-14h,
+    // +1h par la règle canicule de la grille (la lecture ne porte pas d'extension)
+    const sam = analyzeDay(p, today(20260801, 5, true), lautrec, partial);
+    expect(sam.slotsToday).toEqual([{ start: "14:00", end: "20:00" }]);
+    // Vendredi (weekday 4) : plage non applicable
+    const ven = analyzeDay(p, today(20260731, 4, true), lautrec, partial);
+    expect(ven.slotsToday).toEqual([{ start: "10:00", end: "21:00" }]);
+    // Après le 2 août : mesure passée → le bandeau de CETTE actu disparaît
+    const apres = analyzeDay(p, today(20260803, 0, true), lautrec, partial);
+    expect(apres.announcements.map((a) => a.title)).not.toContain(caniculeJuillet.title);
+  });
+
   it("piscine non citée par l'actu « En bref » → ni extension ni annonce", () => {
     const p = { ...chapou, shorts: [caniculeShort] };
     const r = analyzeDay(p, today(20260619, 4), {

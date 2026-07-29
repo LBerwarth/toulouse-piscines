@@ -1,0 +1,303 @@
+import { createHash } from "node:crypto";
+import { POOLS } from "./pools";
+import type { ShortNews } from "./scrape";
+import type { NewsMeasure, NewsReading, NewsReadings } from "./parse-schedule";
+
+/**
+ * Lecture LLM des actualités « En bref » (Gemini, free tier Google AI Studio).
+ *
+ * Les actus sont du texte libre reformulé à chaque épisode — les heuristiques
+ * regex de parse-schedule courent après chaque nouvelle tournure. Ici, chaque
+ * actu est interprétée UNE fois par le modèle (mesures par piscine, en JSON
+ * contraint par schéma), puis mise en cache : Supabase (durable, par hash de
+ * l'actu) + mémo en mémoire (les 12 pages portent le même bloc).
+ *
+ * Best-effort de bout en bout : sans GEMINI_API_KEY, sans réseau, sans table ou
+ * sur réponse invalide, on rend une Map incomplète et parse-schedule retombe
+ * sur ses regex pour les actus manquantes. Jamais bloquant, jamais d'exception.
+ */
+
+/** Clé d'une actu dans la Map des lectures — même convention que collectPoolNews. */
+export function newsKey(news: Pick<ShortNews, "title" | "text">): string {
+  return `${news.title}\n${news.text}`;
+}
+
+function hashKey(key: string): string {
+  return createHash("sha256").update(key).digest("hex");
+}
+
+function model(): string {
+  return process.env.GEMINI_MODEL ?? "gemini-flash-latest";
+}
+
+const HHMM_RE = /^(\d{1,2}):([0-5]\d)$/;
+const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function normTime(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const m = v.match(HHMM_RE);
+  if (!m || Number(m[1]) > 24) return null;
+  return `${m[1].padStart(2, "0")}:${m[2]}`;
+}
+
+function normDate(v: unknown): string | null {
+  return typeof v === "string" && ISO_RE.test(v) ? v : null;
+}
+
+function readMeasure(raw: unknown): NewsMeasure | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const kind = o.kind;
+  if (kind !== "extension" && kind !== "closure" && kind !== "partial_closure") return null;
+
+  const close = normTime(o.close);
+  const windows = Array.isArray(o.windows)
+    ? o.windows
+        .map((w) => {
+          const start = normTime((w as Record<string, unknown>)?.start);
+          const end = normTime((w as Record<string, unknown>)?.end);
+          return start && end && start < end ? { start, end } : null;
+        })
+        .filter((w): w is { start: string; end: string } => w !== null)
+    : [];
+  // Mesure sans son contenu obligatoire : on la jette plutôt que de deviner
+  if (kind === "extension" && !close) return null;
+  if (kind === "partial_closure" && windows.length === 0) return null;
+
+  const dates = Array.isArray(o.dates)
+    ? o.dates.map(normDate).filter((d): d is string => d !== null)
+    : [];
+  const weekdays = Array.isArray(o.weekdays)
+    ? o.weekdays.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6)
+    : [];
+  return {
+    kind,
+    close,
+    windows: windows.length > 0 ? windows : null,
+    basin: typeof o.basin === "string" && o.basin.trim() ? o.basin.trim() : null,
+    dates: dates.length > 0 ? dates : null,
+    from: normDate(o.from),
+    to: normDate(o.to),
+    weekdays: weekdays.length > 0 ? weekdays : null,
+  };
+}
+
+/** Valide et normalise la réponse JSON du modèle. null = inutilisable. */
+export function parseReading(raw: unknown): NewsReading | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const slugs = new Set(POOLS.map((p) => p.slug));
+  const pools: NewsReading["pools"] = [];
+  for (const entry of Array.isArray(o.pools) ? o.pools : []) {
+    const e = entry as Record<string, unknown>;
+    const slug = typeof e?.slug === "string" ? e.slug : null;
+    if (!slug || !slugs.has(slug) || pools.some((p) => p.slug === slug)) continue;
+    const measures = (Array.isArray(e.measures) ? e.measures : [])
+      .map(readMeasure)
+      .filter((m): m is NewsMeasure => m !== null);
+    pools.push({ slug, measures });
+  }
+  const allPools = (Array.isArray(o.allPools) ? o.allPools : [])
+    .map(readMeasure)
+    .filter((m): m is NewsMeasure => m !== null);
+  return { pools, allPools };
+}
+
+// Schéma de réponse Gemini (sous-ensemble OpenAPI) : objet mesure à plat,
+// discriminé par `kind` — les unions ne sont pas fiables côté responseSchema.
+const MEASURE_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    kind: { type: "STRING", enum: ["extension", "closure", "partial_closure"] },
+    close: { type: "STRING", nullable: true, description: "extension : nouvelle heure de fermeture HH:MM" },
+    windows: {
+      type: "ARRAY",
+      nullable: true,
+      description: "partial_closure : plages fermées dans la journée",
+      items: {
+        type: "OBJECT",
+        properties: { start: { type: "STRING" }, end: { type: "STRING" } },
+        required: ["start", "end"],
+      },
+    },
+    basin: { type: "STRING", nullable: true, description: "closure : bassin visé si un seul (ex. nordique)" },
+    dates: { type: "ARRAY", nullable: true, items: { type: "STRING" }, description: "jours précis AAAA-MM-JJ" },
+    from: { type: "STRING", nullable: true, description: "début AAAA-MM-JJ (borne incluse)" },
+    to: { type: "STRING", nullable: true, description: "fin AAAA-MM-JJ, null = sans fin annoncée" },
+    weekdays: {
+      type: "ARRAY",
+      nullable: true,
+      items: { type: "INTEGER" },
+      description: "jours de semaine visés, 0 = lundi … 6 = dimanche",
+    },
+  },
+  required: ["kind"],
+} as const;
+
+const RESPONSE_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    pools: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          slug: { type: "STRING", enum: POOLS.map((p) => p.slug) },
+          measures: { type: "ARRAY", items: MEASURE_SCHEMA },
+        },
+        required: ["slug", "measures"],
+      },
+    },
+    allPools: { type: "ARRAY", items: MEASURE_SCHEMA },
+  },
+  required: ["pools", "allPools"],
+} as const;
+
+function buildPrompt(news: ShortNews): string {
+  const poolList = POOLS.map((p) => `- ${p.slug} : ${p.name}`).join("\n");
+  return `Tu analyses une actualité publiée par la mairie de Toulouse au sujet de ses piscines municipales, afin d'en extraire les changements d'horaires.
+
+Piscines connues (slug : nom) :
+${poolList}
+
+Actualité (publiée le ${news.date ?? "date inconnue"}) :
+Titre : ${news.title}
+Texte :
+${news.text}
+
+Consignes :
+- Liste dans "pools" chaque piscine de la liste réellement concernée, avec ses mesures propres. Une mesure écrite sur la ligne d'une piscine (y compris entre parenthèses dans son nom) ne vaut que pour elle.
+- "allPools" : mesures valant pour toutes les piscines à la fois (ex. « toutes les piscines seront fermées le 1er mai ») — uniquement si l'actu ne liste pas les piscines une à une.
+- Types de mesures :
+  - "extension" : ouverture prolongée → "close" = nouvelle heure de fermeture (HH:MM).
+  - "closure" : fermée toute la journée → "basin" seulement si un seul bassin est visé (ex. « nordique »).
+  - "partial_closure" : fermée une partie de la journée → "windows" = plages FERMÉES (HH:MM).
+- Dates : "dates" pour des jours précis énumérés, sinon "from"/"to" (AAAA-MM-JJ, bornes incluses, année déduite de la date de publication). "to" = null si aucune fin n'est annoncée. "weekdays" (0 = lundi … 6 = dimanche) seulement si la mesure ne vaut que certains jours (ex. « le week-end » → [5, 6]).
+- Piscine concernée par l'annonce mais sans mesure d'horaire chiffrée : liste-la avec "measures": [].
+- Actu sans effet sur les horaires d'aucune piscine (recrutement, événement externe…) : "pools": [] et "allPools": [].
+Réponds uniquement avec le JSON demandé.`;
+}
+
+async function callGemini(news: ShortNews, apiKey: string): Promise<NewsReading | null> {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model()}:generateContent`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: buildPrompt(news) }] }],
+        generationConfig: {
+          temperature: 0,
+          responseMimeType: "application/json",
+          responseSchema: RESPONSE_SCHEMA,
+        },
+      }),
+      signal: AbortSignal.timeout(15_000),
+    }
+  );
+  if (!res.ok) {
+    throw new Error(`Gemini HTTP ${res.status} : ${(await res.text()).slice(0, 300)}`);
+  }
+  const data = (await res.json()) as {
+    candidates?: { content?: { parts?: { text?: string }[] } }[];
+  };
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (typeof text !== "string") throw new Error("Gemini : réponse sans texte");
+  return parseReading(JSON.parse(text));
+}
+
+// Mémo au niveau de l'instance : une actu n'est interprétée qu'une fois par
+// processus (les 12 pages portent le même bloc « En bref »). Succès uniquement —
+// un échec sera retenté au passage suivant du cron.
+const memo = new Map<string, NewsReading>();
+
+// « server-only » (via ./supabase) refuse l'import hors Next (scripts tsx) :
+// import dynamique, et sans cache durable dans ce cas.
+async function dbOrNull() {
+  try {
+    const { db, isConfigured } = await import("./supabase");
+    return isConfigured() ? db() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Interprète les actus « En bref » : Map lecture-par-actu (clé = newsKey) à
+ * passer à analyzeDay. Incomplète ou vide en cas de pépin — jamais d'exception.
+ */
+export async function interpretShorts(shorts: ShortNews[]): Promise<NewsReadings> {
+  const out: NewsReadings = new Map();
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return out;
+
+  const items = new Map<string, { news: ShortNews; hash: string }>();
+  for (const news of shorts) {
+    if (!news.title) continue;
+    const key = newsKey(news);
+    if (!items.has(key)) items.set(key, { news, hash: hashKey(key) });
+  }
+  if (items.size === 0) return out;
+
+  for (const [key, { hash }] of items) {
+    const hit = memo.get(hash);
+    if (hit) out.set(key, hit);
+  }
+
+  const missing = [...items.entries()].filter(([key]) => !out.has(key));
+  if (missing.length === 0) return out;
+
+  const db = await dbOrNull();
+  if (db) {
+    try {
+      const { data, error } = await db
+        .from("news_readings")
+        .select("hash,reading")
+        .in(
+          "hash",
+          missing.map(([, it]) => it.hash)
+        );
+      if (error) throw error;
+      const byHash = new Map((data ?? []).map((r) => [r.hash as string, r.reading]));
+      for (const [key, it] of missing) {
+        const reading = byHash.has(it.hash) ? parseReading(byHash.get(it.hash)) : null;
+        if (reading) {
+          memo.set(it.hash, reading);
+          out.set(key, reading);
+        }
+      }
+    } catch (err) {
+      console.error("[news-llm] cache illisible :", err instanceof Error ? err.message : err);
+    }
+  }
+
+  const toCall = missing.filter(([key]) => !out.has(key));
+  await Promise.all(
+    toCall.map(async ([key, it]) => {
+      try {
+        const reading = await callGemini(it.news, apiKey);
+        if (!reading) return;
+        memo.set(it.hash, reading);
+        out.set(key, reading);
+        if (db) {
+          const { error } = await db.from("news_readings").upsert(
+            {
+              hash: it.hash,
+              title: it.news.title,
+              reading,
+              model: model(),
+            },
+            { onConflict: "hash" }
+          );
+          if (error) throw error;
+        }
+      } catch (err) {
+        console.error(
+          `[news-llm] lecture « ${it.news.title.slice(0, 60)} » sautée :`,
+          err instanceof Error ? err.message : err
+        );
+      }
+    })
+  );
+  return out;
+}
