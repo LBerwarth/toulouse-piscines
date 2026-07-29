@@ -178,8 +178,12 @@ Consignes :
 Réponds uniquement avec le JSON demandé.`;
 }
 
-async function callGemini(news: ShortNews, apiKey: string): Promise<NewsReading | null> {
-  const res = await fetch(
+function geminiRequest(
+  news: ShortNews,
+  apiKey: string,
+  thinkingConfig: Record<string, unknown> | null
+): Promise<Response> {
+  return fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model()}:generateContent`,
     {
       method: "POST",
@@ -190,11 +194,20 @@ async function callGemini(news: ShortNews, apiKey: string): Promise<NewsReading 
           temperature: 0,
           responseMimeType: "application/json",
           responseSchema: RESPONSE_SCHEMA,
+          ...(thinkingConfig ? { thinkingConfig } : {}),
         },
       }),
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(25_000),
     }
   );
+}
+
+async function callGemini(news: ShortNews, apiKey: string): Promise<NewsReading | null> {
+  // Le mode « réflexion » (défaut des Gemini 3.x) multiplie la latence sans
+  // gain sur cette extraction : on le coupe. Retry sans l'option pour les
+  // modèles qui ne la connaissent pas (2.5 : thinkingBudget, pas thinkingLevel).
+  let res = await geminiRequest(news, apiKey, { thinkingLevel: "minimal" });
+  if (res.status === 400) res = await geminiRequest(news, apiKey, null);
   if (!res.ok) {
     throw new Error(`Gemini HTTP ${res.status} : ${(await res.text()).slice(0, 300)}`);
   }
