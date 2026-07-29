@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { POOLS } from "./pools";
 import type { ShortNews } from "./scrape";
 import type { NewsMeasure, NewsReading, NewsReadings } from "./parse-schedule";
@@ -33,7 +34,9 @@ function hashKey(key: string): string {
 }
 
 function model(): string {
-  return process.env.GEMINI_MODEL ?? "gemini-flash-latest";
+  // Épinglé : « gemini-flash-latest » suit le tout dernier modèle, dont le
+  // quota journalier gratuit est minuscule (3.6-flash : 20 requêtes/jour).
+  return process.env.GEMINI_MODEL ?? "gemini-3.5-flash";
 }
 
 const HHMM_RE = /^(\d{1,2}):([0-5]\d)$/;
@@ -231,15 +234,19 @@ async function callGemini(news: ShortNews, apiKey: string): Promise<NewsReading 
 // un échec sera retenté au passage suivant du cron.
 const memo = new Map<string, NewsReading>();
 
-// « server-only » (via ./supabase) refuse l'import hors Next (scripts tsx) :
-// import dynamique, et sans cache durable dans ce cas.
-async function dbOrNull() {
-  try {
-    const { db, isConfigured } = await import("./supabase");
-    return isConfigured() ? db() : null;
-  } catch {
-    return null;
+// Client Supabase propre plutôt que ./supabase : son « server-only » refuse
+// l'import dans les scripts (check-live), qui — privés du cache durable —
+// rappelaient Gemini à chaque exécution et brûlaient le quota journalier.
+let cachedDb: SupabaseClient | null = null;
+async function dbOrNull(): Promise<SupabaseClient | null> {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SECRET_KEY;
+  if (!url || !key) return null;
+  if (!cachedDb) {
+    const { createClient } = await import("@supabase/supabase-js");
+    cachedDb = createClient(url, key, { auth: { persistSession: false } });
   }
+  return cachedDb;
 }
 
 /**
@@ -317,6 +324,8 @@ export async function interpretShorts(shorts: ShortNews[]): Promise<NewsReadings
         `[news-llm] lecture « ${it.news.title.slice(0, 60)} » sautée :`,
         err instanceof Error ? err.message : err
       );
+      // Quota journalier épuisé : les appels suivants échoueraient pareil
+      if (err instanceof Error && err.message.includes("HTTP 429")) break;
     }
   }
   return out;
