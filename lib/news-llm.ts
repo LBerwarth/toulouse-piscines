@@ -291,33 +291,33 @@ export async function interpretShorts(shorts: ShortNews[]): Promise<NewsReadings
     }
   }
 
+  // Séquentiel : une rafale parallèle déclenche le limiteur de débit du free
+  // tier (des lectures sautent au premier passage). ~1 s par actu, rare.
   const toCall = missing.filter(([key]) => !out.has(key));
-  await Promise.all(
-    toCall.map(async ([key, it]) => {
-      try {
-        const reading = await callGemini(it.news, apiKey);
-        if (!reading) return;
-        memo.set(it.hash, reading);
-        out.set(key, reading);
-        if (db) {
-          const { error } = await db.from("news_readings").upsert(
-            {
-              hash: it.hash,
-              title: it.news.title,
-              reading,
-              model: model(),
-            },
-            { onConflict: "hash" }
-          );
-          if (error) throw error;
-        }
-      } catch (err) {
-        console.error(
-          `[news-llm] lecture « ${it.news.title.slice(0, 60)} » sautée :`,
-          err instanceof Error ? err.message : err
+  for (const [key, it] of toCall) {
+    try {
+      const reading = await callGemini(it.news, apiKey);
+      if (!reading) continue;
+      memo.set(it.hash, reading);
+      out.set(key, reading);
+      if (db) {
+        const { error } = await db.from("news_readings").upsert(
+          {
+            hash: it.hash,
+            title: it.news.title,
+            reading,
+            model: model(),
+          },
+          { onConflict: "hash" }
         );
+        if (error) throw error;
       }
-    })
-  );
+    } catch (err) {
+      console.error(
+        `[news-llm] lecture « ${it.news.title.slice(0, 60)} » sautée :`,
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
   return out;
 }
