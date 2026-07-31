@@ -21,5 +21,31 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
       { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
+    shortcuts: [
+      {
+        name: "Piscines ouvertes maintenant",
+        short_name: "Maintenant",
+        url: "/?ouvert=maintenant",
+        icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }],
+      },
+      {
+        name: "Mes piscines favorites",
+        short_name: "Favoris ★",
+        url: "/?favoris=1",
+        icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }],
+      },
+      {
+        name: "Piscines en plein air",
+        short_name: "Plein air",
+        url: "/?type=pleinair",
+        icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }],
+      },
+      {
+        name: "Bassins de 50 m",
+        short_name: "50 m",
+        url: "/?longueur=50",
+        icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }],
+      },
+    ],
   };
 }

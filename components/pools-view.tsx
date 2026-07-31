@@ -3,15 +3,11 @@
 import { useState, useSyncExternalStore } from "react";
 import type { DayStatus, PoolStatus, TimeSlot, WeekDayRef } from "@/lib/status";
 import { classifyBasinEnv, isAnnexBasin, type Environment } from "@/lib/environment";
-import { POOLS, poolHasBasinLength, type BasinLength, type Pool } from "@/lib/pools";
+import { POOLS, poolHasBasinLength, type Pool } from "@/lib/pools";
+import type { EnvFilter, FilterPreset, LengthFilter, OpenFilter } from "@/lib/filters";
 import { WeekTimeline } from "./week-timeline";
 import { PoolList } from "./pool-list";
 import { usePoolNotifications } from "./use-pool-notifications";
-
-// Filtres combinables : emplacement × longueur de bassin × ouverture × favoris.
-type EnvFilter = "all" | Environment;
-type LengthFilter = "all" | BasinLength;
-type OpenFilter = "all" | "now" | "today";
 
 const ENV_OPTIONS: { value: EnvFilter; label: string }[] = [
   { value: "all", label: "Toutes" },
@@ -181,14 +177,30 @@ function Chip({
   );
 }
 
-export function PoolsView({ pools, days }: { pools: PoolStatus[]; days: WeekDayRef[] }) {
-  const [envFilter, setEnvFilter] = useState<EnvFilter>("all");
-  const [lengthFilter, setLengthFilter] = useState<LengthFilter>("all");
-  const [openFilter, setOpenFilter] = useState<OpenFilter>("all");
+export function PoolsView({
+  pools,
+  days,
+  preset,
+}: {
+  pools: PoolStatus[];
+  days: WeekDayRef[];
+  preset: FilterPreset;
+}) {
   // Même mécanique que PoolList : null au rendu serveur et à l'hydratation,
   // puis heure de Toulouse rafraîchie chaque minute.
   const now = useSyncExternalStore<string | null>(subscribeToMinute, nowInToulouse, () => null);
-  const [favOnly, setFavOnly] = useState(false);
+
+  // Un choix explicite de l'utilisateur (même « Toutes ») prime sur le préréglage.
+  const [envChoice, setEnvFilter] = useState<EnvFilter | null>(null);
+  const [lengthChoice, setLengthFilter] = useState<LengthFilter | null>(null);
+  const [openChoice, setOpenFilter] = useState<OpenFilter | null>(null);
+  const [favChoice, setFavOnly] = useState<boolean | null>(null);
+
+  const envFilter = envChoice ?? preset.env;
+  const lengthFilter = lengthChoice ?? preset.length;
+  const openFilter = openChoice ?? preset.open;
+  const favOnly = favChoice ?? preset.fav;
+
   const notif = usePoolNotifications();
   const hasFavorites = notif.favorites.length > 0;
 

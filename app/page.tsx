@@ -1,4 +1,5 @@
 import { getStatusReport } from "@/lib/status";
+import { readFilterPreset } from "@/lib/filters";
 import { PoolsView } from "@/components/pools-view";
 import { StaleBanner } from "@/components/stale-banner";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -12,8 +13,13 @@ import { FEEDBACK_ANCHOR } from "@/lib/feedback";
 //  comme le calendrier scolaire mis en cache 24 h.)
 export const revalidate = 0;
 
-export default async function Home() {
-  const report = await getStatusReport();
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const [report, params] = await Promise.all([getStatusReport(), searchParams]);
+  const preset = readFilterPreset(params);
 
   const updated = new Intl.DateTimeFormat("fr-FR", {
     timeZone: "Europe/Paris",
@@ -65,7 +71,7 @@ export default async function Home() {
 
       <StaleBanner updatedAt={report.updatedAt} updatedLabel={updated} />
 
-      <PoolsView pools={report.pools} days={report.days} />
+      <PoolsView pools={report.pools} days={report.days} preset={preset} />
 
       <FeedbackForm />
 
