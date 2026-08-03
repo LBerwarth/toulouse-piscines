@@ -57,11 +57,17 @@ function basinRow(poolName: string, slug: string, basin: BasinSchedule): Row {
   return { kind: "off", key, slug, label, sub: true, note: noteText(basin.note, "fermé") };
 }
 
-function buildRows(entries: TimelineEntry[]): Row[] {
-  // Ordre alphabétique : chaque piscine garde sa place d'un jour à l'autre,
-  // et les paires comme Nakache été / hiver restent voisines.
-  const withData = entries.filter((e) => e.day).sort((a, b) => a.name.localeCompare(b.name, "fr"));
-  const unavailable = entries.filter((e) => !e.day).sort((a, b) => a.name.localeCompare(b.name, "fr"));
+function buildRows(entries: TimelineEntry[], isFavorite?: (slug: string) => boolean): Row[] {
+  // Piscines suivies (★) en tête, puis ordre alphabétique : chaque piscine
+  // garde sa place d'un jour à l'autre, et les paires comme Nakache été /
+  // hiver restent voisines.
+  const byFavThenName = (a: TimelineEntry, b: TimelineEntry) => {
+    const fa = isFavorite?.(a.slug) ? 0 : 1;
+    const fb = isFavorite?.(b.slug) ? 0 : 1;
+    return fa - fb || a.name.localeCompare(b.name, "fr");
+  };
+  const withData = entries.filter((e) => e.day).sort(byFavThenName);
+  const unavailable = entries.filter((e) => !e.day).sort(byFavThenName);
 
   const rows: Row[] = [];
   for (const entry of withData) {
@@ -154,7 +160,7 @@ export function TimelineChart({
   /** Créneaux servant à calibrer l'axe horaire (pour garder un axe stable
    *  quand on change de jour) ; par défaut les créneaux affichés */
   rangeSlots?: TimeSlot[];
-  /** Marque d'une ★ les piscines suivies (favoris) à côté de leur nom */
+  /** Marque d'une ★ les piscines suivies (favoris) et les place en tête */
   isFavorite?: (slug: string) => boolean;
 }) {
   // « null » au rendu serveur (cache 30 min) et à l'hydratation, puis l'heure
@@ -166,7 +172,7 @@ export function TimelineChart({
     noTime
   );
 
-  const rows = buildRows(entries);
+  const rows = buildRows(entries, isFavorite);
   const shownSlots = rows.flatMap((r) => (r.kind === "bar" ? r.slots : []));
   const axisSlots = rangeSlots && rangeSlots.length > 0 ? rangeSlots : shownSlots;
 
