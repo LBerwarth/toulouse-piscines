@@ -1,0 +1,5 @@
+Version 1.3.1 — mise à jour de maintenance, sans nouveauté visible.
+
+Les horaires continuent d'être relus automatiquement toutes les 15 minutes depuis les pages officielles : l'application affiche toujours l'état du jour le plus récent.
+
+Si vous avez deux minutes : ouvrez l'appli avant votre prochaine séance, puis dites-moi ce qui cloche via « Signaler une erreur ou donner votre avis », en bas de l'écran. Même une remarque minuscule m'aide beaucoup.

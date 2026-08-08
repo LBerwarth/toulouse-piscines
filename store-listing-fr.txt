@@ -1,0 +1,44 @@
+NOM DE L'APPLICATION
+====================
+Piscines de Toulouse
+
+
+DESCRIPTION COURTE (80 caractères max)
+======================================
+Horaires et fermetures des 12 piscines municipales de Toulouse, en temps réel.
+
+
+DESCRIPTION COMPLÈTE (4000 caractères max)
+==========================================
+Quelles piscines municipales sont ouvertes aujourd'hui à Toulouse ? Cette application répond en un coup d'œil : le statut du jour des 12 piscines municipales, avec leurs créneaux d'ouverture, les fermetures exceptionnelles et les travaux, mis à jour automatiquement tout au long de la journée depuis les pages officielles de Toulouse Métropole.
+
+VOTRE SEMAINE DE NATATION EN UN COUP D'ŒIL
+• Le statut du jour de chaque piscine : ouverte ou fermée, avec les horaires précis de chaque bassin.
+• Une vue de la semaine : visualisez les créneaux des 7 prochains jours et planifiez votre prochaine séance.
+• Les raisons de fermeture affichées clairement : travaux, jour férié, fermeture technique ou exceptionnelle…
+• Des horaires qui tiennent compte des périodes scolaires et des vacances.
+
+DES FILTRES QUI SE CUMULENT
+• Intérieur ou plein air.
+• Longueur de bassin : 25 m ou 50 m.
+• Ouvertes maintenant ou aujourd'hui.
+• Vos favoris ★ pour retrouver directement vos piscines habituelles.
+
+DES ALERTES UTILES (FACULTATIVES)
+• Soyez prévenu·e des fermetures imprévues et des changements exceptionnels : horaires prolongés en cas de canicule, fermeture technique de dernière minute…
+• Choisissez la portée de vos alertes : toutes les piscines ou seulement vos favorites ★.
+
+DES DONNÉES TOUJOURS FRAÎCHES
+• Les horaires sont relus automatiquement toutes les 15 minutes en journée depuis metropole.toulouse.fr.
+• L'heure de dernière mise à jour est affichée en permanence.
+
+RESPECTUEUSE DE VOTRE VIE PRIVÉE
+• Aucun compte, aucune inscription.
+• Aucune donnée personnelle collectée, aucune publicité, aucun traceur.
+• Les notifications sont strictement facultatives et désactivables à tout moment.
+
+LES PISCINES COUVERTES
+Alban Minville, Alex Jany, Alfred Nakache (bassins d'été et d'hiver), Bellevue, Castex, Chapou, Jean Boiteux (Espace Job), Léo Lagrange, Papus, Toulouse Lautrec et Yvonne Godard.
+
+BON À SAVOIR
+Application personnelle et indépendante, non affiliée à la mairie de Toulouse ni à Toulouse Métropole. Les informations proviennent des pages publiques des piscines sur metropole.toulouse.fr ; vérifiez toujours les informations critiques (fermetures, horaires de dernière minute) sur la page officielle de chaque piscine.
