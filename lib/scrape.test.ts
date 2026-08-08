@@ -153,6 +153,41 @@ describe("parsePoolPage", () => {
       { kind: "text", text: "Jeudi : 16h - 19h" },
     ]);
   });
+
+  // Structure réelle de l'encart « Les coordonnées », suivie des deux numéros
+  // du pied de page (Toulouse Métropole, mairie) présents sur toutes les pages.
+  const contactPage = (tel: string) => `
+    <html><body>
+      <div id="panel-coordonnees-side">
+        <div class="accordion-body">
+          <div class="paragraph paragraph--type--fiche-lieu-equipement">
+            <p class="contact__info__name">Piscine Bellevue</p>
+            <p>69 ter, route de Narbonne, 31400 Toulouse</p>
+            <p><a href="tel:${tel}"><strong>${tel}</strong></a></p>
+          </div>
+        </div>
+      </div>
+      <footer>
+        <address><a href="tel:0581917200">05 81 91 72 00</a></address>
+        <address><a href="tel:0561222922">05 61 22 29 22</a></address>
+      </footer>
+    </body></html>`;
+
+  it("lit le téléphone de l'accueil, pas ceux du pied de page", () => {
+    expect(parsePoolPage(contactPage("05 61 22 24 80")).phone).toBe("0561222480");
+  });
+
+  it("ne garde que le premier numéro quand la mairie en glisse deux (Nakache)", () => {
+    expect(parsePoolPage(contactPage("05 61 22 31 35 ou 05 61 22 30 14")).phone).toBe("0561223135");
+    expect(
+      parsePoolPage(contactPage("05 61 22 31 35 numéro remplacé par le 05 61 22 30 14 en été"))
+        .phone
+    ).toBe("0561223135");
+  });
+
+  it("renvoie null quand la page ne publie aucun téléphone", () => {
+    expect(parsePoolPage("<html><body><p>Piscine Bellevue</p></body></html>").phone).toBeNull();
+  });
 });
 
 describe("fetchPoolPage", () => {

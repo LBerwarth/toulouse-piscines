@@ -22,6 +22,8 @@ export interface PoolStatus {
   url: string;
   /** Type de bassins : intérieur, extérieur, ou mixte */
   env: PoolEnv;
+  /** Téléphone de l'accueil, 10 chiffres sans séparateur ; null si la page n'en publie pas */
+  phone: string | null;
   /** false si la page n'a pas pu être récupérée */
   ok: boolean;
   error: string | null;
@@ -73,7 +75,7 @@ function toPoolStatus(
   llmNews: NewsReadings | undefined
 ): PoolStatus {
   const base = { slug: pool.slug, name: pool.name, url: poolUrl(pool), env: pool.env };
-  if (!page) return { ...base, ok: false, error, week: null, raw: null };
+  if (!page) return { ...base, ok: false, error, week: null, raw: null, phone: null };
   const days = week.map((d) => analyzeDay(page, d, pool, llmNews));
   // Les corps de texte bruts (section.body) ne servent qu'à l'analyse
   // côté serveur : on ne les envoie pas au navigateur.
@@ -82,7 +84,7 @@ function toPoolStatus(
     notices: page.notices,
     sections: page.sections.map(({ title, lines }) => ({ title, lines })),
   };
-  return { ...base, ok: true, error: null, week: days, raw };
+  return { ...base, ok: true, error: null, week: days, raw, phone: page.phone };
 }
 
 /**
@@ -125,7 +127,7 @@ function cronActive(hour: number): boolean {
  * d'une autre version est ignoré : on évite ainsi qu'un déploiement (ou une autre
  * instance partageant la ligne de cache) ne serve des données d'une forme obsolète.
  */
-const CACHE_SCHEMA_VERSION = 3;
+const CACHE_SCHEMA_VERSION = 4;
 
 /**
  * Applique `fn` aux éléments en gardant au plus `limit` requêtes en vol, dans

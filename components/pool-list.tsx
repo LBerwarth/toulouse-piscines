@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from "react";
 import type { PoolStatus } from "@/lib/status";
 import type { SectionLine } from "@/lib/scrape";
-import { poolDirectionsUrl } from "@/lib/pools";
+import { formatPhone, phoneHref, poolDirectionsUrl } from "@/lib/pools";
 
 /** Ligne d'horaires : « Lundi : … », « Du lundi au jeudi : … », « Samedi et dimanche … » */
 const DAY_LINE_RE = /^(?:du|le)?\s*(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b/i;
@@ -243,13 +243,26 @@ function PoolCard({
             rel="noreferrer"
             aria-label={`Itinéraire vers la piscine ${pool.name} (Google Maps)`}
             title="Itinéraire — ouvre Google Maps"
-            className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[#1a73e8] text-white shadow-sm transition-colors hover:bg-[#1557b0]"
+            className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-gradient-to-r from-pink-500 to-fuchsia-600 text-white shadow-sm transition-opacity hover:opacity-90 dark:from-pink-600 dark:to-fuchsia-700"
           >
             {/* Flèche « Itinéraire » de Google Maps (icône Material near_me) */}
             <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-current">
               <path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z" />
             </svg>
           </a>
+          {pool.phone && (
+            <a
+              href={phoneHref(pool.phone)}
+              aria-label={`Appeler la piscine ${pool.name} au ${formatPhone(pool.phone)}`}
+              title={`Appeler l'accueil — ${formatPhone(pool.phone)}`}
+              className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-violet-600 text-white shadow-sm transition-colors hover:bg-violet-700 dark:bg-violet-500 dark:hover:bg-violet-400"
+            >
+              {/* Combiné « Appeler » (icône Material call) */}
+              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-current">
+                <path d="M6.62 10.79c1.44 2.83 3.76 5.15 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.24.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" />
+              </svg>
+            </a>
+          )}
         </div>
         <Badge state={state} />
       </div>

@@ -108,3 +108,13 @@ export function poolDirectionsUrl(pool: Pick<Pool, "name">): string {
   const destination = encodeURIComponent(`Piscine ${pool.name} Toulouse`);
   return `https://www.google.com/maps/dir/?api=1&destination=${destination}`;
 }
+
+/** « 0561222480 » → « 05 61 22 24 80 » */
+export function formatPhone(phone: string): string {
+  return phone.replace(/(\d{2})(?=\d)/g, "$1 ");
+}
+
+/** Format international : un mobile en itinérance compose le numéro tel quel. */
+export function phoneHref(phone: string): string {
+  return `tel:+33${phone.slice(1)}`;
+}

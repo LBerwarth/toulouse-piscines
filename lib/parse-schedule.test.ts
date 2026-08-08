@@ -33,6 +33,7 @@ const page = (
   notices,
   sections: sections.map((s) => ({ ...s, body: s.lines.map((l) => l.text).join(" ") })),
   shorts,
+  phone: null,
 });
 
 const text = (t: string): SectionLine => ({ kind: "text", text: t });

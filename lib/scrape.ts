@@ -32,12 +32,24 @@ export interface PageSections {
   notices: string[];
   /** Actualités « En bref » — la mairie y publie les annonces opérationnelles (hors grille d'horaires) */
   shorts: ShortNews[];
+  /** Téléphone de l'accueil, 10 chiffres sans séparateur ; null si la page n'en publie pas */
+  phone: string | null;
 }
 
 const REVALIDATE_SECONDS = 1800;
 
 function clean(text: string): string {
   return text.replace(/ /g, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Premier numéro français bien formé d'un texte de contact. La mairie glisse
+ * parfois une phrase entière dans le lien « tel: » (Nakache : « …31 35 numéro
+ * remplacé par le …30 14 en été ») — on ne retient que le premier numéro.
+ */
+function firstPhone(text: string): string | null {
+  const match = clean(text).match(/0[1-9](?:[ .-]?\d{2}){4}/);
+  return match ? match[0].replace(/\D/g, "") : null;
 }
 
 /**
@@ -147,6 +159,18 @@ export function parsePoolPage(html: string): PageSections {
 
   const intro = blockText($(".field--name-field-chapeau"));
 
+  // Téléphone : uniquement dans l'encart « Les coordonnées ». Le pied de page
+  // porte deux autres numéros (Toulouse Métropole, mairie) qu'il ne faut pas
+  // confondre avec celui de l'accueil de la piscine.
+  const contact = $("#panel-coordonnees-side");
+  const contactBlock =
+    contact.length > 0
+      ? contact
+      : $(".accordion-item").filter((_, el) =>
+          /coordonn/i.test($(el).find(".accordion-button__text").first().text())
+        );
+  const phone = firstPhone(contactBlock.find('a[href^="tel:"]').first().text());
+
   const sections: { title: string; body: string; lines: SectionLine[] }[] = [];
 
   // 1. Sections accordéon (« Horaires période scolaire », …)
@@ -229,5 +253,5 @@ export function parsePoolPage(html: string): PageSections {
     shorts.push({ date, title, text: text.slice(0, 1500), pools });
   });
 
-  return { intro, sections, notices, shorts };
+  return { intro, sections, notices, shorts, phone };
 }
