@@ -80,6 +80,34 @@ export const POOLS: Pool[] = [
   { slug: "piscine-yvonne-godard", name: "Yvonne Godard", env: "indoor", basins: [{ length: 25, env: "indoor" }] },
 ];
 
+export interface LatLon {
+  lat: number;
+  lon: number;
+}
+
+/**
+ * Position de chaque piscine, obtenue une fois pour toutes en géocodant
+ * l'adresse publiée dans « Les coordonnées » de la page mairie (Base Adresse
+ * Nationale, api-adresse.data.gouv.fr). Figée ici plutôt que géocodée à
+ * l'exécution : l'application ne doit appeler aucun service tiers.
+ * Nakache été, Nakache hiver et Castex partagent un même point — c'est le même
+ * complexe de l'île du Ramier.
+ */
+export const POOL_COORDS: Record<string, LatLon> = {
+  "piscine-alban-minville": { lat: 43.56454, lon: 1.39908 },
+  "piscine-alex-jany": { lat: 43.62496, lon: 1.47764 },
+  "piscine-alfred-nakache-ete": { lat: 43.58444, lon: 1.43662 },
+  "piscine-alfred-nakache-hiver": { lat: 43.58444, lon: 1.43662 },
+  "piscine-bellevue": { lat: 43.56932, lon: 1.45588 },
+  "piscine-castex": { lat: 43.58444, lon: 1.43662 },
+  "piscine-chapou-ete": { lat: 43.60868, lon: 1.41949 },
+  "piscine-jean-boiteux-espace-job": { lat: 43.61685, lon: 1.40836 },
+  "piscine-leo-lagrange": { lat: 43.60722, lon: 1.45377 },
+  "piscine-papus": { lat: 43.57456, lon: 1.41724 },
+  "piscine-toulouse-lautrec": { lat: 43.62813, lon: 1.43897 },
+  "piscine-yvonne-godard": { lat: 43.57116, lon: 1.44454 },
+};
+
 /**
  * La piscine possède-t-elle un bassin de la longueur demandée — le cas échéant
  * dans l'emplacement demandé (intérieur / plein air) ? Sert au filtre 25/50 m,

@@ -7,6 +7,7 @@ import { POOLS, poolHasBasinLength, type Pool } from "@/lib/pools";
 import type { EnvFilter, FilterPreset, LengthFilter, OpenFilter } from "@/lib/filters";
 import { WeekTimeline } from "./week-timeline";
 import { PoolList } from "./pool-list";
+import { PoolMap } from "./pool-map";
 import { usePoolNotifications } from "./use-pool-notifications";
 
 const ENV_OPTIONS: { value: EnvFilter; label: string }[] = [
@@ -364,6 +365,7 @@ export function PoolsView({
       ) : (
         <>
           <WeekTimeline pools={filtered} days={days} isFavorite={notif.isFavorite} />
+          <PoolMap pools={filtered} now={now} isFavorite={notif.isFavorite} />
           <PoolList
             pools={filtered}
             isFavorite={notif.isFavorite}

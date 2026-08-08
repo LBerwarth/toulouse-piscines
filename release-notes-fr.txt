@@ -1,6 +1,3 @@
-• Nouveau : un bouton d'appel sur chaque piscine. Un geste et vous joignez l'accueil — pratique pour confirmer une fermeture de dernière minute ou poser une question sur les créneaux.
+• Nouveau : une carte situe les 12 piscines d'un coup d'œil, avec la Garonne et le canal du Midi pour se repérer. Les piscines ouvertes maintenant y sont en rose, vos favorites ★ en étoile. Touchez un nom pour ouvrir sa fiche.
+• Nouveau : un bouton d'appel sur chaque piscine, pour joindre l'accueil d'un geste.
 • Les boutons « itinéraire » et « appeler » adoptent les couleurs de l'application.
-
-Le numéro est relu automatiquement sur la page officielle de chaque piscine : il reste à jour tout seul.
-
-Une remarque ? Le formulaire en bas de l'écran arrive directement chez moi.

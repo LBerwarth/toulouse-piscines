@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import type { PoolStatus } from "@/lib/status";
 import type { SectionLine } from "@/lib/scrape";
+import { liveState, type LiveState } from "@/lib/live-state";
 import { formatPhone, phoneHref, poolDirectionsUrl } from "@/lib/pools";
 
 /** Ligne d'horaires : « Lundi : … », « Du lundi au jeudi : … », « Samedi et dimanche … » */
@@ -56,13 +57,6 @@ function orderLines(lines: SectionLine[]): SectionLine[] {
   return out;
 }
 
-type LiveState =
-  | { kind: "open"; until: string }
-  | { kind: "later"; at: string }
-  | { kind: "done" }
-  | { kind: "closed"; reason: string | null }
-  | { kind: "unknown" };
-
 function nowInToulouse(): string {
   return new Intl.DateTimeFormat("fr-FR", {
     timeZone: "Europe/Paris",
@@ -76,21 +70,6 @@ function nowInToulouse(): string {
 function subscribeToMinute(onChange: () => void): () => void {
   const timer = setInterval(onChange, 60_000);
   return () => clearInterval(timer);
-}
-
-function liveState(pool: PoolStatus, now: string | null): LiveState {
-  const day = pool.week?.[0];
-  if (!day) return { kind: "unknown" };
-  if (!day.openToday || day.slotsToday.length === 0) {
-    return { kind: "closed", reason: day.closureReason };
-  }
-  if (now === null) return { kind: "unknown" };
-  for (const slot of day.slotsToday) {
-    if (now >= slot.start && now < slot.end) return { kind: "open", until: slot.end };
-  }
-  const next = day.slotsToday.find((s) => now < s.start);
-  if (next) return { kind: "later", at: next.start };
-  return { kind: "done" };
 }
 
 const ORDER: Record<LiveState["kind"], number> = {
@@ -195,7 +174,10 @@ function PoolCard({
   const banners = day?.announcements?.filter((a) => a.title !== day.closureReason) ?? [];
 
   return (
-    <li className="rounded-2xl bg-card p-4 shadow-md shadow-pink-100/50 dark:shadow-none dark:ring-1 dark:ring-white/10">
+    <li
+      id={`carte-${pool.slug}`}
+      className="scroll-mt-4 rounded-2xl bg-card p-4 shadow-md shadow-pink-100/50 dark:shadow-none dark:ring-1 dark:ring-white/10"
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-1.5">
           {onToggleFavorite && (
