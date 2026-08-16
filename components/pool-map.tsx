@@ -3,12 +3,17 @@
 import type { PoolStatus } from "@/lib/status";
 import { liveState } from "@/lib/live-state";
 import {
+  BRIENNE_PATH,
   CANAL_PATH,
   GARONNE_PATH,
+  LATERAL_PATH,
+  METRO_LINES,
+  MONUMENTS,
   VIEW_HEIGHT,
   VIEW_WIDTH,
   groupSites,
   type MapSite,
+  type MonumentIcon,
 } from "@/lib/map-geometry";
 
 /** Étoile à cinq branches centrée sur (0,0), rayon 1 — repère des piscines ★. */
@@ -26,6 +31,57 @@ const STAR = Array.from({ length: 10 }, (_, i) => {
 function shortName(name: string): string {
   const base = name.replace(/\s+(été|hiver)$/i, "").trim();
   return base.split(/\s+/).pop() ?? base;
+}
+
+const METRO_STYLE = {
+  A: {
+    line: "stroke-red-500/40 dark:stroke-red-400/30",
+    stop: "fill-red-500/60 dark:fill-red-400/50",
+    badge: "fill-red-500 dark:fill-red-400",
+    letter: "fill-white dark:fill-red-950",
+  },
+  B: {
+    line: "stroke-yellow-500/50 dark:stroke-yellow-300/30",
+    stop: "fill-yellow-500/70 dark:fill-yellow-300/50",
+    badge: "fill-yellow-400 dark:fill-yellow-300",
+    letter: "fill-yellow-950",
+  },
+} as const;
+
+function MonumentGlyph({ icon }: { icon: MonumentIcon }) {
+  switch (icon) {
+    case "capitole":
+      return (
+        <>
+          <path d="M -16 9 V -5 H 16 V 9 Z" />
+          <path d="M -16 -5 L 0 -13 L 16 -5" />
+          <path d="M -8 9 V -5 M 0 9 V -5 M 8 9 V -5" />
+        </>
+      );
+    case "basilique":
+      return (
+        <>
+          <path d="M -6 12 V -2 L 0 -12 L 6 -2 V 12" />
+          <path d="M 0 -12 V -19 M -3 -16 H 3" />
+        </>
+      );
+    case "pont":
+      return (
+        <>
+          <path d="M -20 -5 H 20" />
+          <path d="M -18 8 A 6 6 0 0 1 -6 8 A 6 6 0 0 1 6 8 A 6 6 0 0 1 18 8" />
+        </>
+      );
+    case "stade":
+      return (
+        <>
+          <ellipse rx="15" ry="9" />
+          <ellipse rx="7" ry="3.5" />
+        </>
+      );
+    case "zenith":
+      return <path d="M -15 7 H 15 M -11 7 A 11 11 0 0 1 11 7" />;
+  }
 }
 
 function siteLabel(site: MapSite, bySlug: Map<string, PoolStatus>): string {
@@ -58,7 +114,7 @@ export function PoolMap({
       </h2>
       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
         {now === null
-          ? `${sites.length} sites, la Garonne et le canal du Midi pour se repérer.`
+          ? `${sites.length} sites, le métro, la Garonne et le canal du Midi pour se repérer.`
           : `${openCount} piscine${openCount > 1 ? "s" : ""} ouverte${openCount > 1 ? "s" : ""} en ce moment.`}
       </p>
 
@@ -69,7 +125,7 @@ export function PoolMap({
           viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
           className="block w-full rounded-2xl bg-sky-50/70 dark:bg-violet-950/40"
           role="img"
-          aria-label={`Carte schématique de Toulouse situant les ${sites.length} sites de piscines municipales.`}
+          aria-label={`Carte schématique de Toulouse situant les ${sites.length} sites de piscines municipales, avec les lignes A et B du métro et quelques monuments repères.`}
         >
           <defs>
             <linearGradient id="carte-ouverte" x1="0" y1="0" x2="1" y2="1">
@@ -92,6 +148,69 @@ export function PoolMap({
             strokeLinecap="round"
             className="stroke-sky-200/70 dark:stroke-sky-400/20"
           />
+          <path
+            d={BRIENNE_PATH}
+            fill="none"
+            strokeWidth="8"
+            strokeLinecap="round"
+            className="stroke-sky-200/70 dark:stroke-sky-400/20"
+          />
+          <path
+            d={LATERAL_PATH}
+            fill="none"
+            strokeWidth="9"
+            strokeLinecap="round"
+            className="stroke-sky-200/70 dark:stroke-sky-400/20"
+          />
+
+          {METRO_LINES.map((line) => (
+            <path
+              key={line.id}
+              d={line.path}
+              fill="none"
+              strokeWidth="7"
+              strokeLinecap="round"
+              className={METRO_STYLE[line.id].line}
+            />
+          ))}
+
+          {MONUMENTS.map((m) => (
+            <g
+              key={m.nom}
+              fill="none"
+              strokeWidth="3"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              className="stroke-slate-400/90 dark:stroke-slate-400/70"
+              transform={`translate(${m.point.x} ${m.point.y})${m.rotate ? ` rotate(${m.rotate})` : ""}`}
+            >
+              <MonumentGlyph icon={m.icon} />
+            </g>
+          ))}
+
+          {METRO_LINES.map((line) => (
+            <g key={line.id}>
+              {line.stops.map((stop) => (
+                <circle key={stop.nom} cx={stop.x} cy={stop.y} r="6" className={METRO_STYLE[line.id].stop}>
+                  <title>{`${stop.nom} (ligne ${line.id})`}</title>
+                </circle>
+              ))}
+              {line.badges.map((badge, i) => (
+                <g key={i} transform={`translate(${badge.x} ${badge.y})`}>
+                  <circle r="15" className={METRO_STYLE[line.id].badge} />
+                  <text
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fontSize="19"
+                    fontWeight="700"
+                    className={METRO_STYLE[line.id].letter}
+                  >
+                    {line.id}
+                  </text>
+                </g>
+              ))}
+            </g>
+          ))}
 
           {sites.map((site) => {
             const open = site.slugs.some((s) => {
@@ -122,6 +241,25 @@ export function PoolMap({
 
         {/* Étiquettes en HTML plutôt qu'en <text> : elles gardent la taille de
             police du reste de l'application quelle que soit la largeur du SVG. */}
+        {MONUMENTS.map((m) => {
+          const left = (m.point.x / VIEW_WIDTH) * 100;
+          const top = (m.point.y / VIEW_HEIGHT) * 100;
+          const right = m.labelSide === "left";
+          return (
+            <span
+              key={m.nom}
+              className={`pointer-events-none absolute -translate-y-1/2 whitespace-nowrap text-[9px] italic leading-none text-slate-400 dark:text-slate-500 ${
+                right ? "-translate-x-full" : ""
+              }`}
+              style={{
+                left: `calc(${left}% + ${right ? "-0.9rem" : "0.9rem"})`,
+                top: `${top}%`,
+              }}
+            >
+              {m.nom}
+            </span>
+          );
+        })}
         {sites.map((site) => {
           const left = (site.point.x / VIEW_WIDTH) * 100;
           const top = (site.point.y / VIEW_HEIGHT) * 100;
@@ -147,7 +285,8 @@ export function PoolMap({
 
       <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
         Plan simplifié, sans fond cartographique : aucune donnée n&apos;est envoyée à un service
-        tiers. Touchez un nom pour ouvrir sa fiche.
+        tiers. Métro d&apos;après les données ouvertes Tisséo / Toulouse Métropole, embarquées
+        dans l&apos;application. Touchez un nom pour ouvrir sa fiche.
       </p>
     </section>
   );
