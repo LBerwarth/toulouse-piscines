@@ -49,14 +49,10 @@ export function WeekTimeline({
   const dateKey = days[index]?.dateKey;
 
   return (
-    <section className="mb-6 rounded-3xl bg-card p-4 shadow-lg shadow-pink-100/60 dark:shadow-none dark:ring-1 dark:ring-white/10 sm:p-5">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-violet-800 dark:text-violet-200">
-        Horaires par jour
-      </h2>
-
+    <div>
       {/* 7 colonnes égales : tient toujours dans la largeur de l'écran,
           sans conteneur défilant (pas de barre de scroll parasite) */}
-      <div className="mt-3 grid grid-cols-7 gap-1 sm:gap-1.5">
+      <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
         {DAY_LABELS.map((label, wd) => {
           const isSel = selected === wd;
           return (
@@ -90,6 +86,6 @@ export function WeekTimeline({
         rangeSlots={rangeSlots}
         isFavorite={isFavorite}
       />
-    </section>
+    </div>
   );
 }

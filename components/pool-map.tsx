@@ -23,6 +23,10 @@ const STAR = Array.from({ length: 10 }, (_, i) => {
   return `${(Math.cos(angle) * r).toFixed(3)},${(Math.sin(angle) * r).toFixed(3)}`;
 }).join(" ");
 
+/** Deux vaguelettes dans le rond du repère : on lit « piscine » d'un coup d'œil. */
+const WAVES =
+  "M -8 -2.5 c 2 -3.5 6 -3.5 8 0 c 2 3.5 6 3.5 8 0 M -8 5.5 c 2 -3.5 6 -3.5 8 0 c 2 3.5 6 3.5 8 0";
+
 /**
  * Nom court pour les repères qui regroupent plusieurs bassins : « Alfred
  * Nakache été » et « Alfred Nakache hiver » se réduisent tous deux à
@@ -35,15 +39,15 @@ function shortName(name: string): string {
 
 const METRO_STYLE = {
   A: {
-    line: "stroke-red-500/40 dark:stroke-red-400/30",
-    stop: "fill-red-500/60 dark:fill-red-400/50",
-    badge: "fill-red-500 dark:fill-red-400",
+    line: "stroke-red-500/30 dark:stroke-red-400/25",
+    stop: "fill-red-500/45 dark:fill-red-400/40",
+    badge: "fill-red-500/80 dark:fill-red-400/80",
     letter: "fill-white dark:fill-red-950",
   },
   B: {
-    line: "stroke-yellow-500/50 dark:stroke-yellow-300/30",
-    stop: "fill-yellow-500/70 dark:fill-yellow-300/50",
-    badge: "fill-yellow-400 dark:fill-yellow-300",
+    line: "stroke-yellow-500/40 dark:stroke-yellow-300/25",
+    stop: "fill-yellow-500/55 dark:fill-yellow-300/40",
+    badge: "fill-yellow-400/85 dark:fill-yellow-300/85",
     letter: "fill-yellow-950",
   },
 } as const;
@@ -108,11 +112,8 @@ export function PoolMap({
   const openCount = pools.filter((p) => liveState(p, now).kind === "open").length;
 
   return (
-    <section className="mb-6 rounded-3xl bg-card p-4 shadow-lg shadow-pink-100/60 dark:shadow-none dark:ring-1 dark:ring-white/10 sm:p-5">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-violet-800 dark:text-violet-200">
-        Où sont les piscines
-      </h2>
-      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+    <div>
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         {now === null
           ? `${sites.length} sites, le métro, la Garonne et le canal du Midi pour se repérer.`
           : `${openCount} piscine${openCount > 1 ? "s" : ""} ouverte${openCount > 1 ? "s" : ""} en ce moment.`}
@@ -181,7 +182,7 @@ export function PoolMap({
               strokeWidth="3"
               strokeLinejoin="round"
               strokeLinecap="round"
-              className="stroke-slate-400/90 dark:stroke-slate-400/70"
+              className="stroke-slate-400/70 dark:stroke-slate-400/50"
               transform={`translate(${m.point.x} ${m.point.y})${m.rotate ? ` rotate(${m.rotate})` : ""}`}
             >
               <MonumentGlyph icon={m.icon} />
@@ -222,17 +223,30 @@ export function PoolMap({
             const muted = open
               ? ""
               : "fill-slate-300 dark:fill-slate-600";
+            // Liseré couleur du fond : détache le repère des lignes de métro
+            // et des cours d'eau qu'il chevauche.
+            const halo = "stroke-white dark:stroke-violet-950";
             return (
               <g key={site.slugs[0]}>
                 {starred ? (
                   <polygon
                     points={STAR}
                     fill={fill}
-                    className={muted}
-                    transform={`translate(${site.point.x} ${site.point.y}) scale(19)`}
+                    strokeWidth={0.15}
+                    className={`${muted} ${halo}`}
+                    transform={`translate(${site.point.x} ${site.point.y}) scale(21)`}
                   />
                 ) : (
-                  <circle cx={site.point.x} cy={site.point.y} r="13" fill={fill} className={muted} />
+                  <g transform={`translate(${site.point.x} ${site.point.y})`}>
+                    <circle r="15" fill={fill} strokeWidth="3" className={`${muted} ${halo}`} />
+                    <path
+                      d={WAVES}
+                      fill="none"
+                      strokeWidth="2.4"
+                      strokeLinecap="round"
+                      className="stroke-white/90"
+                    />
+                  </g>
                 )}
               </g>
             );
@@ -269,7 +283,7 @@ export function PoolMap({
               key={site.slugs[0]}
               href={`#carte-${site.slugs[0]}`}
               title={`Aller à ${siteLabel(site, bySlug)}`}
-              className={`absolute -translate-y-1/2 whitespace-nowrap rounded px-1 text-[11px] font-medium leading-tight text-slate-700 underline-offset-2 hover:text-fuchsia-700 hover:underline dark:text-slate-200 dark:hover:text-fuchsia-300 sm:text-xs ${
+              className={`absolute -translate-y-1/2 whitespace-nowrap rounded bg-white/75 px-1 text-[11px] font-semibold leading-tight text-slate-800 underline-offset-2 hover:text-fuchsia-700 hover:underline dark:bg-violet-950/70 dark:text-slate-100 dark:hover:text-fuchsia-300 sm:text-xs ${
                 right ? "-translate-x-full" : ""
               }`}
               style={{
@@ -288,6 +302,6 @@ export function PoolMap({
         tiers. Métro d&apos;après les données ouvertes Tisséo / Toulouse Métropole, embarquées
         dans l&apos;application. Touchez un nom pour ouvrir sa fiche.
       </p>
-    </section>
+    </div>
   );
 }

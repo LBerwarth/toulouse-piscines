@@ -5,6 +5,7 @@ import type { DayStatus, PoolStatus, TimeSlot, WeekDayRef } from "@/lib/status";
 import { classifyBasinEnv, isAnnexBasin, type Environment } from "@/lib/environment";
 import { POOLS, poolHasBasinLength, type Pool } from "@/lib/pools";
 import type { EnvFilter, FilterPreset, LengthFilter, OpenFilter } from "@/lib/filters";
+import { CollapsibleSection } from "./collapsible-section";
 import { WeekTimeline } from "./week-timeline";
 import { PoolList } from "./pool-list";
 import { PoolMap } from "./pool-map";
@@ -364,13 +365,26 @@ export function PoolsView({
         </p>
       ) : (
         <>
-          <WeekTimeline pools={filtered} days={days} isFavorite={notif.isFavorite} />
-          <PoolMap pools={filtered} now={now} isFavorite={notif.isFavorite} />
-          <PoolList
-            pools={filtered}
-            isFavorite={notif.isFavorite}
-            onToggleFavorite={notif.toggleFavorite}
-          />
+          <CollapsibleSection title="Horaires par jour" storageKey="bloc-horaires">
+            <WeekTimeline pools={filtered} days={days} isFavorite={notif.isFavorite} />
+          </CollapsibleSection>
+          <CollapsibleSection title="Où sont les piscines" storageKey="bloc-carte">
+            <PoolMap pools={filtered} now={now} isFavorite={notif.isFavorite} />
+          </CollapsibleSection>
+          {/* Les repères de la carte pointent sur #carte-<slug> : le bloc replié
+              se rouvre alors de lui-même. */}
+          <CollapsibleSection
+            title={`Les piscines (${filtered.length})`}
+            storageKey="bloc-piscines"
+            variant="plain"
+            hashPrefix="carte-"
+          >
+            <PoolList
+              pools={filtered}
+              isFavorite={notif.isFavorite}
+              onToggleFavorite={notif.toggleFavorite}
+            />
+          </CollapsibleSection>
         </>
       )}
     </>
