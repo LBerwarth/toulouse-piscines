@@ -259,6 +259,50 @@ export function PoolsView({
       fav: effectiveFavOnly,
       ...change,
     });
+
+  /**
+   * Clic sur un filtre (type / longueur / ouvertes) : si plus AUCUNE favorite
+   * ne passerait le nouveau réglage, « ★ Favoris » se désactive au lieu de
+   * laisser une liste vide — chercher un 25 m quand toutes ses ★ font 50 m,
+   * c'est chercher une autre piscine que les siennes.
+   */
+  const clickFilter = (change: { env?: EnvFilter; length?: LengthFilter; open?: OpenFilter }) => {
+    const nextEnv = change.env ?? envFilter;
+    const nextLength = change.length ?? lengthFilter;
+    const nextOpen = change.open ?? openFilter;
+    let fav = effectiveFavOnly;
+    if (
+      fav &&
+      filterPools(pools, zoneFilter, nextEnv, nextLength, nextOpen, now, notif.favorites)
+        .length === 0
+    ) {
+      fav = false;
+      setFavOnly(false);
+    }
+    if (change.env !== undefined) setEnvFilter(change.env);
+    if (change.length !== undefined) setLengthFilter(change.length);
+    if (change.open !== undefined) setOpenFilter(change.open);
+    persist({ ...change, fav });
+  };
+
+  /**
+   * Bascule « ★ Favoris ». À l'activation, les autres filtres reviennent à
+   * « Toutes » : ★ veut dire « mes piscines, toutes mes piscines » — un 25 m
+   * resté actif en masquerait une partie sans que rien ne le signale.
+   */
+  const toggleFavOnly = () => {
+    const next = !effectiveFavOnly;
+    setFavOnly(next);
+    if (next) {
+      setZoneFilter("metropole");
+      setEnvFilter("all");
+      setLengthFilter("all");
+      setOpenFilter("all");
+      persistFilters({ zone: "metropole", env: "all", length: "all", open: "all", fav: true });
+      return;
+    }
+    persist({ fav: false });
+  };
   const filtered = filterPools(
     pools,
     zoneFilter,
@@ -318,10 +362,7 @@ export function PoolsView({
                 <Chip
                   key={opt.value}
                   selected={envFilter === opt.value}
-                  onClick={() => {
-                    setEnvFilter(opt.value);
-                    persist({ env: opt.value });
-                  }}
+                  onClick={() => clickFilter({ env: opt.value })}
                 >
                   {opt.label}
                 </Chip>
@@ -338,10 +379,7 @@ export function PoolsView({
                 <Chip
                   key={opt.value}
                   selected={lengthFilter === opt.value}
-                  onClick={() => {
-                    setLengthFilter(opt.value);
-                    persist({ length: opt.value });
-                  }}
+                  onClick={() => clickFilter({ length: opt.value })}
                 >
                   {opt.label}
                 </Chip>
@@ -358,10 +396,7 @@ export function PoolsView({
                 <Chip
                   key={opt.value}
                   selected={openFilter === opt.value}
-                  onClick={() => {
-                    setOpenFilter(opt.value);
-                    persist({ open: opt.value });
-                  }}
+                  onClick={() => clickFilter({ open: opt.value })}
                 >
                   {opt.label}
                 </Chip>
@@ -374,13 +409,7 @@ export function PoolsView({
               <span className="w-16 shrink-0 text-xs font-medium uppercase tracking-wide text-violet-800/70 dark:text-violet-200/85">
                 Suivies
               </span>
-              <Chip
-                selected={effectiveFavOnly}
-                onClick={() => {
-                  setFavOnly(!effectiveFavOnly);
-                  persist({ fav: !effectiveFavOnly });
-                }}
-              >
+              <Chip selected={effectiveFavOnly} onClick={toggleFavOnly}>
                 ★ Favoris
               </Chip>
             </div>
