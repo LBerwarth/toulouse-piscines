@@ -128,16 +128,17 @@ function filterPools(
   now: string | null,
   favorites: string[] | null
 ): PoolStatus[] {
-  // Secteur : d'abord, c'est un filtre de périmètre géographique.
+  // « Favoris » : mes piscines, où qu'elles soient — le secteur ne s'y
+  // applique pas (une favorite à Colomiers ne disparaît pas en vue Toulouse).
+  // Sinon, le secteur borne le périmètre géographique. Les filtres
+  // emplacement/longueur, eux, se cumulent dans les deux cas.
   const kept = ZONES_KEPT[zone];
-  let selected = pools.filter((p) => {
-    const meta = POOL_BY_SLUG.get(p.slug);
-    return meta !== undefined && kept.includes(meta.zone);
-  });
-
-  // « Favoris » : filtre par piscine (indépendant des autres critères), on
-  // garde la piscine entière. Se cumule avec les filtres emplacement/longueur.
-  if (favorites) selected = selected.filter((p) => favorites.includes(p.slug));
+  let selected = favorites
+    ? pools.filter((p) => favorites.includes(p.slug))
+    : pools.filter((p) => {
+        const meta = POOL_BY_SLUG.get(p.slug);
+        return meta !== undefined && kept.includes(meta.zone);
+      });
 
   // Longueur : au niveau de la piscine — a-t-elle un bassin de 25/50 m, le cas
   // échéant dans l'emplacement demandé ? (ex. « 50 m » + « Plein air » ne garde
@@ -284,6 +285,9 @@ export function PoolsView({
       <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
         {/* Un groupe de filtres par ligne — tous se cumulent. */}
         <div className="flex flex-col gap-2">
+          {/* Sous filtre ★, le secteur ne s'applique plus : la ligne disparaît
+              plutôt que d'afficher des pastilles sans effet. */}
+          {!effectiveFavOnly && (
           <div className="flex flex-wrap items-center gap-2">
             <span className="w-16 shrink-0 text-xs font-medium uppercase tracking-wide text-violet-800/70 dark:text-violet-200/85">
               Secteur
@@ -303,6 +307,7 @@ export function PoolsView({
               ))}
             </div>
           </div>
+          )}
 
           <div className="flex flex-wrap items-center gap-2">
             <span className="w-16 shrink-0 text-xs font-medium uppercase tracking-wide text-violet-800/70 dark:text-violet-200/85">
@@ -453,7 +458,7 @@ export function PoolsView({
             <WeekTimeline pools={filtered} days={days} isFavorite={notif.isFavorite} />
           </CollapsibleSection>
           <CollapsibleSection title="Où sont les piscines" storageKey="bloc-carte">
-            <PoolMap pools={filtered} now={now} isFavorite={notif.isFavorite} zone={zoneFilter} />
+            <PoolMap pools={filtered} now={now} isFavorite={notif.isFavorite} />
           </CollapsibleSection>
           {/* Les repères de la carte pointent sur #carte-<slug> : le bloc replié
               se rouvre alors de lui-même. */}

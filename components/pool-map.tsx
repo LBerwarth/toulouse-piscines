@@ -2,7 +2,7 @@
 
 import type { PoolStatus } from "@/lib/status";
 import { liveState } from "@/lib/live-state";
-import { MAP_VIEWS, groupSites, type MapSite, type MonumentIcon } from "@/lib/map-geometry";
+import { MAP_VIEWS, fitView, groupSites, type MapSite, type MonumentIcon } from "@/lib/map-geometry";
 import type { ZoneFilter } from "@/lib/filters";
 
 /** Étoile à cinq branches centrée sur (0,0), rayon 1 — repère des piscines ★. */
@@ -104,24 +104,28 @@ export function PoolMap({
   pools,
   now,
   isFavorite,
-  zone = "toulouse",
 }: {
   pools: PoolStatus[];
   now: string | null;
   isFavorite?: (slug: string) => boolean;
-  zone?: ZoneFilter;
 }) {
+  // La vue suit ce qui est affiché, pas le filtre : des favoris éparpillés
+  // appellent la vue large, un filtre ramené au centre-ville la vue détaillée.
+  const zone: ZoneFilter = fitView(pools.map((p) => p.slug));
   const view = MAP_VIEWS[zone];
   const bySlug = new Map(pools.map((p) => [p.slug, p]));
   const sites = groupSites(pools.map((p) => p.slug), zone);
   if (sites.length === 0) return null;
 
-  // Vues larges : les douze piscines de la ville se serrent au centre — leurs
-  // étiquettes deviendraient illisibles. On n'étiquette que les sites hors
-  // Toulouse (par leur commune, c'est ainsi qu'on les cherche sur une carte) ;
-  // les repères de la ville restent cliquables, leur nom en infobulle.
+  // Vues larges et carte pleine : les piscines de la ville se serrent au
+  // centre, leurs étiquettes deviendraient illisibles — seuls les sites hors
+  // Toulouse gardent la leur (leur commune), les repères de la ville restant
+  // cliquables, nom en infobulle. Quand peu de sites sont affichés (favoris…),
+  // tout le monde est étiqueté : il y a la place.
   const labelled = (site: MapSite): boolean =>
-    zone === "toulouse" || site.slugs.some((s) => bySlug.get(s)?.commune !== "Toulouse");
+    zone === "toulouse" ||
+    sites.length <= 6 ||
+    site.slugs.some((s) => bySlug.get(s)?.commune !== "Toulouse");
 
   const openCount = pools.filter((p) => liveState(p, now).kind === "open").length;
 

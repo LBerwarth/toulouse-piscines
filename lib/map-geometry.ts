@@ -368,6 +368,26 @@ export const MAP_VIEWS: Record<ZoneFilter, MapView> = {
 };
 
 /**
+ * Plus petite vue dont le cadre contient toutes les piscines demandées : la
+ * carte s'adapte à ce qui est affiché (favoris éparpillés → vue large, filtre
+ * ramené au centre-ville → vue ville, plus détaillée). Une piscine sans
+ * coordonnées ne contraint rien — elle n'est pas sur le plan.
+ */
+export function fitView(slugs: string[]): ZoneFilter {
+  for (const zone of ["toulouse", "metropole", "all"] as const) {
+    const b = VIEW_BOUNDS[zone];
+    const fits = slugs.every((slug) => {
+      const c = POOL_COORDS[slug];
+      return (
+        !c || (c.lat >= b.latMin && c.lat <= b.latMax && c.lon >= b.lonMin && c.lon <= b.lonMax)
+      );
+    });
+    if (fits) return zone;
+  }
+  return "all";
+}
+
+/**
  * Côté où poser l'étiquette de chaque site, réglé à la main pour qu'aucune ne
  * chevauche sa voisine ni ne sorte du cadre.
  */
