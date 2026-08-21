@@ -219,6 +219,13 @@ function PoolCard({
               </svg>
             </span>
           </a>
+          {/* « Jean Vauchère » ou « Hersain » ne situent rien sans leur commune ;
+              celles de Toulouse n'ont pas besoin de l'étiquette. */}
+          {pool.commune !== "Toulouse" && (
+            <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-800 dark:bg-violet-400/15 dark:text-violet-100">
+              {pool.commune}
+            </span>
+          )}
           <a
             href={poolDirectionsUrl(pool)}
             target="_blank"

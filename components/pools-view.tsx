@@ -4,12 +4,33 @@ import { useState, useSyncExternalStore } from "react";
 import type { DayStatus, PoolStatus, TimeSlot, WeekDayRef } from "@/lib/status";
 import { classifyBasinEnv, isAnnexBasin, type Environment } from "@/lib/environment";
 import { POOLS, poolHasBasinLength, type Pool } from "@/lib/pools";
-import type { EnvFilter, FilterPreset, LengthFilter, OpenFilter } from "@/lib/filters";
+import {
+  persistFilters,
+  ZONES_KEPT,
+  type EnvFilter,
+  type FilterPreset,
+  type LengthFilter,
+  type OpenFilter,
+  type ZoneFilter,
+} from "@/lib/filters";
 import { CollapsibleSection } from "./collapsible-section";
 import { WeekTimeline } from "./week-timeline";
 import { PoolList } from "./pool-list";
 import { PoolMap } from "./pool-map";
 import { usePoolNotifications } from "./use-pool-notifications";
+
+// Une pastille de secteur n'a de sens que si elle élargit vraiment la liste :
+// chaque cran n'ajoute qu'un secteur, et sans piscine dans ce secteur la
+// pastille donnerait le même résultat que la précédente.
+const ZONE_OPTIONS: { value: ZoneFilter; label: string }[] = (
+  [
+    { value: "toulouse", label: "Toulouse", adds: "toulouse" },
+    { value: "metropole", label: "Métropole", adds: "metropole" },
+    { value: "all", label: "+ alentours", adds: "alentours" },
+  ] as const
+)
+  .filter((opt) => POOLS.some((p) => p.zone === opt.adds))
+  .map(({ value, label }) => ({ value, label }));
 
 const ENV_OPTIONS: { value: EnvFilter; label: string }[] = [
   { value: "all", label: "Toutes" },
@@ -100,15 +121,23 @@ function filterDay(day: DayStatus, pool: Pool, env: EnvFilter, length: LengthFil
 
 function filterPools(
   pools: PoolStatus[],
+  zone: ZoneFilter,
   env: EnvFilter,
   length: LengthFilter,
   open: OpenFilter,
   now: string | null,
   favorites: string[] | null
 ): PoolStatus[] {
+  // Secteur : d'abord, c'est un filtre de périmètre géographique.
+  const kept = ZONES_KEPT[zone];
+  let selected = pools.filter((p) => {
+    const meta = POOL_BY_SLUG.get(p.slug);
+    return meta !== undefined && kept.includes(meta.zone);
+  });
+
   // « Favoris » : filtre par piscine (indépendant des autres critères), on
   // garde la piscine entière. Se cumule avec les filtres emplacement/longueur.
-  let selected = favorites ? pools.filter((p) => favorites.includes(p.slug)) : pools;
+  if (favorites) selected = selected.filter((p) => favorites.includes(p.slug));
 
   // Longueur : au niveau de la piscine — a-t-elle un bassin de 25/50 m, le cas
   // échéant dans l'emplacement demandé ? (ex. « 50 m » + « Plein air » ne garde
@@ -193,11 +222,18 @@ export function PoolsView({
   const now = useSyncExternalStore<string | null>(subscribeToMinute, nowInToulouse, () => null);
 
   // Un choix explicite de l'utilisateur (même « Toutes ») prime sur le préréglage.
+  const [zoneChoice, setZoneFilter] = useState<ZoneFilter | null>(null);
   const [envChoice, setEnvFilter] = useState<EnvFilter | null>(null);
   const [lengthChoice, setLengthFilter] = useState<LengthFilter | null>(null);
   const [openChoice, setOpenFilter] = useState<OpenFilter | null>(null);
   const [favChoice, setFavOnly] = useState<boolean | null>(null);
 
+  const requestedZone = zoneChoice ?? preset.zone;
+  // Cookie ou raccourci pointant un cran sans piscine : on prend le plus large
+  // disponible, sinon aucune pastille ne paraîtrait active.
+  const zoneFilter = ZONE_OPTIONS.some((o) => o.value === requestedZone)
+    ? requestedZone
+    : (ZONE_OPTIONS[ZONE_OPTIONS.length - 1]?.value ?? "toulouse");
   const envFilter = envChoice ?? preset.env;
   const lengthFilter = lengthChoice ?? preset.length;
   const openFilter = openChoice ?? preset.open;
@@ -210,8 +246,21 @@ export function PoolsView({
   // inactif. Dérivé au rendu (pas de setState en effet) — la pastille Favoris
   // disparaît alors, donc pas de filtre vide sans échappatoire.
   const effectiveFavOnly = favOnly && hasFavorites;
+
+  // Mémorise le choix dans le cookie — mais seulement sur clic : un raccourci
+  // du lanceur ne doit pas écraser la préférence habituelle de l'utilisateur.
+  const persist = (change: Partial<FilterPreset>) =>
+    persistFilters({
+      zone: zoneFilter,
+      env: envFilter,
+      length: lengthFilter,
+      open: openFilter,
+      fav: effectiveFavOnly,
+      ...change,
+    });
   const filtered = filterPools(
     pools,
+    zoneFilter,
     envFilter,
     lengthFilter,
     openFilter,
@@ -237,6 +286,26 @@ export function PoolsView({
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <span className="w-16 shrink-0 text-xs font-medium uppercase tracking-wide text-violet-800/70 dark:text-violet-200/85">
+              Secteur
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {ZONE_OPTIONS.map((opt) => (
+                <Chip
+                  key={opt.value}
+                  selected={zoneFilter === opt.value}
+                  onClick={() => {
+                    setZoneFilter(opt.value);
+                    persist({ zone: opt.value });
+                  }}
+                >
+                  {opt.label}
+                </Chip>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-16 shrink-0 text-xs font-medium uppercase tracking-wide text-violet-800/70 dark:text-violet-200/85">
               Type
             </span>
             <div className="flex flex-wrap gap-1.5">
@@ -244,7 +313,10 @@ export function PoolsView({
                 <Chip
                   key={opt.value}
                   selected={envFilter === opt.value}
-                  onClick={() => setEnvFilter(opt.value)}
+                  onClick={() => {
+                    setEnvFilter(opt.value);
+                    persist({ env: opt.value });
+                  }}
                 >
                   {opt.label}
                 </Chip>
@@ -261,7 +333,10 @@ export function PoolsView({
                 <Chip
                   key={opt.value}
                   selected={lengthFilter === opt.value}
-                  onClick={() => setLengthFilter(opt.value)}
+                  onClick={() => {
+                    setLengthFilter(opt.value);
+                    persist({ length: opt.value });
+                  }}
                 >
                   {opt.label}
                 </Chip>
@@ -278,7 +353,10 @@ export function PoolsView({
                 <Chip
                   key={opt.value}
                   selected={openFilter === opt.value}
-                  onClick={() => setOpenFilter(opt.value)}
+                  onClick={() => {
+                    setOpenFilter(opt.value);
+                    persist({ open: opt.value });
+                  }}
                 >
                   {opt.label}
                 </Chip>
@@ -291,7 +369,13 @@ export function PoolsView({
               <span className="w-16 shrink-0 text-xs font-medium uppercase tracking-wide text-violet-800/70 dark:text-violet-200/85">
                 Suivies
               </span>
-              <Chip selected={effectiveFavOnly} onClick={() => setFavOnly(!effectiveFavOnly)}>
+              <Chip
+                selected={effectiveFavOnly}
+                onClick={() => {
+                  setFavOnly(!effectiveFavOnly);
+                  persist({ fav: !effectiveFavOnly });
+                }}
+              >
                 ★ Favoris
               </Chip>
             </div>
@@ -369,7 +453,7 @@ export function PoolsView({
             <WeekTimeline pools={filtered} days={days} isFavorite={notif.isFavorite} />
           </CollapsibleSection>
           <CollapsibleSection title="Où sont les piscines" storageKey="bloc-carte">
-            <PoolMap pools={filtered} now={now} isFavorite={notif.isFavorite} />
+            <PoolMap pools={filtered} now={now} isFavorite={notif.isFavorite} zone={zoneFilter} />
           </CollapsibleSection>
           {/* Les repères de la carte pointent sur #carte-<slug> : le bloc replié
               se rouvre alors de lui-même. */}

@@ -2,19 +2,8 @@
 
 import type { PoolStatus } from "@/lib/status";
 import { liveState } from "@/lib/live-state";
-import {
-  BRIENNE_PATH,
-  CANAL_PATH,
-  GARONNE_PATH,
-  LATERAL_PATH,
-  METRO_LINES,
-  MONUMENTS,
-  VIEW_HEIGHT,
-  VIEW_WIDTH,
-  groupSites,
-  type MapSite,
-  type MonumentIcon,
-} from "@/lib/map-geometry";
+import { MAP_VIEWS, groupSites, type MapSite, type MonumentIcon } from "@/lib/map-geometry";
+import type { ZoneFilter } from "@/lib/filters";
 
 /** Étoile à cinq branches centrée sur (0,0), rayon 1 — repère des piscines ★. */
 const STAR = Array.from({ length: 10 }, (_, i) => {
@@ -85,10 +74,18 @@ function MonumentGlyph({ icon }: { icon: MonumentIcon }) {
       );
     case "zenith":
       return <path d="M -15 7 H 15 M -11 7 A 11 11 0 0 1 11 7" />;
+    case "avion":
+      return (
+        <path d="M 0 -14 V 14 M 0 -4 L -14 4 M 0 -4 L 14 4 M 0 11 L -6 15 M 0 11 L 6 15" />
+      );
   }
 }
 
-function siteLabel(site: MapSite, bySlug: Map<string, PoolStatus>): string {
+function siteLabel(site: MapSite, bySlug: Map<string, PoolStatus>, zone: ZoneFilter): string {
+  // Vues larges : les sites hors Toulouse s'étiquettent par leur commune —
+  // « Blagnac » situe mieux que « Les Ramiers ».
+  const commune = bySlug.get(site.slugs[0])?.commune;
+  if (zone !== "toulouse" && commune && commune !== "Toulouse") return commune;
   const names = site.slugs.map((s) => bySlug.get(s)?.name ?? s);
   if (names.length === 1) return names[0];
   // Nakache été, Nakache hiver et Castex : un seul complexe, mais les deux noms
@@ -96,18 +93,35 @@ function siteLabel(site: MapSite, bySlug: Map<string, PoolStatus>): string {
   return [...new Set(names.map(shortName))].join(" · ");
 }
 
+/** Largeur d'affichage par vue : les vues larges sont plus étalées que hautes. */
+const MAX_WIDTH: Record<ZoneFilter, string> = {
+  toulouse: "max-w-[340px]",
+  metropole: "max-w-[420px]",
+  all: "max-w-[480px]",
+};
+
 export function PoolMap({
   pools,
   now,
   isFavorite,
+  zone = "toulouse",
 }: {
   pools: PoolStatus[];
   now: string | null;
   isFavorite?: (slug: string) => boolean;
+  zone?: ZoneFilter;
 }) {
+  const view = MAP_VIEWS[zone];
   const bySlug = new Map(pools.map((p) => [p.slug, p]));
-  const sites = groupSites(pools.map((p) => p.slug));
+  const sites = groupSites(pools.map((p) => p.slug), zone);
   if (sites.length === 0) return null;
+
+  // Vues larges : les douze piscines de la ville se serrent au centre — leurs
+  // étiquettes deviendraient illisibles. On n'étiquette que les sites hors
+  // Toulouse (par leur commune, c'est ainsi qu'on les cherche sur une carte) ;
+  // les repères de la ville restent cliquables, leur nom en infobulle.
+  const labelled = (site: MapSite): boolean =>
+    zone === "toulouse" || site.slugs.some((s) => bySlug.get(s)?.commune !== "Toulouse");
 
   const openCount = pools.filter((p) => liveState(p, now).kind === "open").length;
 
@@ -119,11 +133,11 @@ export function PoolMap({
           : `${openCount} piscine${openCount > 1 ? "s" : ""} ouverte${openCount > 1 ? "s" : ""} en ce moment.`}
       </p>
 
-      {/* Le plan est plus haut que large (les piscines s'étirent du nord au sud) :
-          on borne sa largeur pour qu'il ne dévore pas l'écran sur grand écran. */}
-      <div className="relative mx-auto mt-3 w-full max-w-[340px]">
+      {/* Largeur bornée pour que le plan ne dévore pas l'écran sur grand écran ;
+          les vues larges, plus étalées, gagnent un peu de place. */}
+      <div className={`relative mx-auto mt-3 w-full ${MAX_WIDTH[zone]}`}>
         <svg
-          viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
+          viewBox={`0 0 ${view.width} ${view.height}`}
           className="block w-full rounded-2xl bg-sky-50/70 dark:bg-violet-950/40"
           role="img"
           aria-label={`Carte schématique de Toulouse situant les ${sites.length} sites de piscines municipales, avec les lignes A et B du métro et quelques monuments repères.`}
@@ -135,36 +149,22 @@ export function PoolMap({
             </linearGradient>
           </defs>
 
-          <path
-            d={GARONNE_PATH}
-            fill="none"
-            strokeWidth="26"
-            strokeLinecap="round"
-            className="stroke-sky-200/80 dark:stroke-sky-400/25"
-          />
-          <path
-            d={CANAL_PATH}
-            fill="none"
-            strokeWidth="11"
-            strokeLinecap="round"
-            className="stroke-sky-200/70 dark:stroke-sky-400/20"
-          />
-          <path
-            d={BRIENNE_PATH}
-            fill="none"
-            strokeWidth="8"
-            strokeLinecap="round"
-            className="stroke-sky-200/70 dark:stroke-sky-400/20"
-          />
-          <path
-            d={LATERAL_PATH}
-            fill="none"
-            strokeWidth="9"
-            strokeLinecap="round"
-            className="stroke-sky-200/70 dark:stroke-sky-400/20"
-          />
+          {view.rivers.map((river, i) => (
+            <path
+              key={i}
+              d={river.d}
+              fill="none"
+              strokeWidth={river.width}
+              strokeLinecap="round"
+              className={
+                i === 0
+                  ? "stroke-sky-200/80 dark:stroke-sky-400/25"
+                  : "stroke-sky-200/70 dark:stroke-sky-400/20"
+              }
+            />
+          ))}
 
-          {METRO_LINES.map((line) => (
+          {view.metro.map((line) => (
             <path
               key={line.id}
               d={line.path}
@@ -175,7 +175,7 @@ export function PoolMap({
             />
           ))}
 
-          {MONUMENTS.map((m) => (
+          {view.monuments.map((m) => (
             <g
               key={m.nom}
               fill="none"
@@ -189,7 +189,7 @@ export function PoolMap({
             </g>
           ))}
 
-          {METRO_LINES.map((line) => (
+          {view.metro.map((line) => (
             <g key={line.id}>
               {line.stops.map((stop) => (
                 <circle key={stop.nom} cx={stop.x} cy={stop.y} r="6" className={METRO_STYLE[line.id].stop}>
@@ -228,6 +228,7 @@ export function PoolMap({
             const halo = "stroke-white dark:stroke-violet-950";
             return (
               <g key={site.slugs[0]}>
+                <title>{siteLabel(site, bySlug, zone)}</title>
                 {starred ? (
                   <polygon
                     points={STAR}
@@ -255,9 +256,9 @@ export function PoolMap({
 
         {/* Étiquettes en HTML plutôt qu'en <text> : elles gardent la taille de
             police du reste de l'application quelle que soit la largeur du SVG. */}
-        {MONUMENTS.map((m) => {
-          const left = (m.point.x / VIEW_WIDTH) * 100;
-          const top = (m.point.y / VIEW_HEIGHT) * 100;
+        {view.monuments.map((m) => {
+          const left = (m.point.x / view.width) * 100;
+          const top = (m.point.y / view.height) * 100;
           const right = m.labelSide === "left";
           return (
             <span
@@ -274,15 +275,15 @@ export function PoolMap({
             </span>
           );
         })}
-        {sites.map((site) => {
-          const left = (site.point.x / VIEW_WIDTH) * 100;
-          const top = (site.point.y / VIEW_HEIGHT) * 100;
+        {sites.filter(labelled).map((site) => {
+          const left = (site.point.x / view.width) * 100;
+          const top = (site.point.y / view.height) * 100;
           const right = site.labelSide === "left";
           return (
             <a
               key={site.slugs[0]}
               href={`#carte-${site.slugs[0]}`}
-              title={`Aller à ${siteLabel(site, bySlug)}`}
+              title={`Aller à ${siteLabel(site, bySlug, zone)}`}
               className={`absolute -translate-y-1/2 whitespace-nowrap rounded bg-white/75 px-1 text-[11px] font-semibold leading-tight text-slate-800 underline-offset-2 hover:text-fuchsia-700 hover:underline dark:bg-violet-950/70 dark:text-slate-100 dark:hover:text-fuchsia-300 sm:text-xs ${
                 right ? "-translate-x-full" : ""
               }`}
@@ -291,7 +292,7 @@ export function PoolMap({
                 top: `${top}%`,
               }}
             >
-              {siteLabel(site, bySlug)}
+              {siteLabel(site, bySlug, zone)}
             </a>
           );
         })}
