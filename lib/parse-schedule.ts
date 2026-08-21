@@ -116,7 +116,28 @@ export function parseTimeRanges(line: string): TimeSlot[] {
 // ---------------------------------------------------------------------------
 
 export function parseDays(line: string): Set<number> | null {
-  const t = norm(line);
+  // Jour de semaine porté par une DATE de plage (« du mardi 26 mai au vendredi
+  // 31 août ») : borne de période, pas jour d'ouverture — sans quoi la ligne ne
+  // s'appliquerait qu'au mardi et au vendredi. Le digit qui suit distingue la
+  // date du vrai intervalle de jours (« du lundi au vendredi »), préservé.
+  const t = norm(line).replace(
+    /\b(du|au)\s+(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\s+(?=\d)/g,
+    "$1 "
+  );
+  // « tous les jours, sauf le mardi » : les jours cités après « sauf » /
+  // « excepté » sont exclus ; sans jours avant, l'exclusion vaut sur la semaine.
+  const [main, ...tail] = t.split(/\bsauf\b|\bexcepte(?:e|es)?\b/);
+  const excluded = tail.length > 0 ? collectDays(tail.join(" ")) : null;
+  let days = collectDays(main);
+  if (excluded) {
+    days ??= new Set([0, 1, 2, 3, 4, 5, 6]);
+    for (const d of excluded) days.delete(d);
+  }
+  return days && days.size > 0 ? days : null;
+}
+
+/** Jours cités par un texte déjà normalisé (cf. parseDays). */
+function collectDays(t: string): Set<number> | null {
   const days = new Set<number>();
 
   if (/tous les jours/.test(t)) {
@@ -1283,6 +1304,16 @@ export function analyzeDay(
     .sort((a, b) => spanOf(a.range) - spanOf(b.range));
 
   let selected: PeriodBlock | null = dated[0] ?? null;
+
+  // Plusieurs blocs datés d'égale précision couvrant aujourd'hui (grille
+  // scolaire ET grille de vacances d'une même saison, ex. Plaisance) : le
+  // calendrier scolaire départage — le tri par étendue n'y suffit pas.
+  if (selected !== null && today.isSchoolHoliday !== null) {
+    const wantedType = today.isSchoolHoliday ? "vacation" : "school";
+    const sameSpan = spanOf(selected.range);
+    const match = dated.find((b) => spanOf(b.range) === sameSpan && b.periodType === wantedType);
+    if (match) selected = match;
+  }
 
   // En juillet / août, une grille « vacances hors été » ne décrit pas la période
   // en cours : on l'écarte du repli plutôt que d'afficher ses horaires.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { POOLS, poolHasBasinLength } from "./pools";
+import { POOLS, POOL_COORDS, poolHasBasinLength, poolUrl } from "./pools";
 import { poolHasEnv } from "./environment";
 
 describe("métadonnées basins (longueurs 25/50 m)", () => {
@@ -13,11 +13,12 @@ describe("métadonnées basins (longueurs 25/50 m)", () => {
     }
   });
 
-  it("les piscines à bassin de 50 m sont Castex, Léo Lagrange et Toulouse Lautrec", () => {
+  it("les piscines à bassin de 50 m sont Castex, Léo Lagrange, Toulouse Lautrec et Les Ramiers", () => {
     const with50 = POOLS.filter((p) => poolHasBasinLength(p, 50))
       .map((p) => p.slug)
       .sort();
     expect(with50).toEqual([
+      "complexe-nautique-des-ramiers",
       "piscine-castex",
       "piscine-leo-lagrange",
       "piscine-toulouse-lautrec",
@@ -28,7 +29,14 @@ describe("métadonnées basins (longueurs 25/50 m)", () => {
     const outdoor50 = POOLS.filter((p) => poolHasBasinLength(p, 50, "outdoor"))
       .map((p) => p.slug)
       .sort();
-    expect(outdoor50).toEqual(["piscine-castex", "piscine-toulouse-lautrec"]);
+    expect(outdoor50).toEqual([
+      "complexe-nautique-des-ramiers",
+      "piscine-castex",
+      "piscine-toulouse-lautrec",
+    ]);
+    expect(POOLS.filter((p) => poolHasBasinLength(p, 25, "outdoor")).map((p) => p.slug)).toContain(
+      "piscine-launaguet"
+    );
     const indoor50 = POOLS.filter((p) => poolHasBasinLength(p, 50, "indoor")).map((p) => p.slug);
     expect(indoor50).toEqual(["piscine-leo-lagrange"]);
   });
@@ -46,5 +54,44 @@ describe("métadonnées basins (longueurs 25/50 m)", () => {
     expect(poolHasBasinLength(bellevue, 25, "indoor")).toBe(true);
     expect(poolHasBasinLength(bellevue, 25, "outdoor")).toBe(true);
     expect(poolHasBasinLength(bellevue, 50)).toBe(false);
+  });
+});
+
+describe("secteurs et sources", () => {
+  it("donne à chaque piscine une commune et un secteur", () => {
+    for (const p of POOLS) {
+      expect(p.commune, p.slug).not.toBe("");
+      expect(["toulouse", "metropole", "alentours"], p.slug).toContain(p.zone);
+    }
+  });
+
+  it("n'utilise le secteur « toulouse » que pour la commune de Toulouse", () => {
+    for (const p of POOLS) {
+      expect(p.zone === "toulouse", p.slug).toBe(p.commune === "Toulouse");
+    }
+  });
+
+  it("donne une URL explicite à toute piscine hors site de la mairie de Toulouse", () => {
+    for (const p of POOLS.filter((x) => x.source && x.source !== "toulouse")) {
+      expect(p.url, p.slug).toMatch(/^https:\/\//);
+    }
+  });
+
+  it("garde les slugs uniques (Alex Jany existe aussi à Ramonville)", () => {
+    const slugs = POOLS.map((p) => p.slug);
+    expect(new Set(slugs).size).toBe(slugs.length);
+  });
+
+  it("déduit l'URL du slug pour les piscines de Toulouse", () => {
+    const p = POOLS.find((x) => x.slug === "piscine-papus")!;
+    expect(poolUrl(p)).toBe("https://metropole.toulouse.fr/annuaire/piscine-papus");
+  });
+
+  it("ne place sur le plan que les piscines dont on a relevé les coordonnées", () => {
+    // Le plan est cadré sur la ville : une piscine sans coordonnées est
+    // simplement absente du plan (cf. groupSites), pas une erreur.
+    for (const slug of Object.keys(POOL_COORDS)) {
+      expect(POOLS.some((p) => p.slug === slug), slug).toBe(true);
+    }
   });
 });

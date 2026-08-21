@@ -1,6 +1,7 @@
 import { after } from "next/server";
 import { POOLS, poolUrl, type Pool, type PoolEnv } from "./pools";
-import { fetchPoolPage, type PageSections, type SectionLine } from "./scrape";
+import { type PageSections, type SectionLine } from "./scrape";
+import { fetchSchedulePage } from "./sources";
 import { analyzeDay, type DayStatus, type NewsReadings } from "./parse-schedule";
 import { interpretShorts, newsKey } from "./news-llm";
 import { getWeekInfo, type TodayInfo } from "./today";
@@ -19,6 +20,8 @@ export interface PoolInfo {
 export interface PoolStatus {
   slug: string;
   name: string;
+  /** Commune de l'équipement — affichée pour les piscines hors Toulouse. */
+  commune: string;
   url: string;
   /** Type de bassins : intérieur, extérieur, ou mixte */
   env: PoolEnv;
@@ -63,7 +66,7 @@ interface FetchedPool {
 
 async function fetchPool(pool: Pool, fresh: boolean): Promise<FetchedPool> {
   try {
-    return { pool, page: await fetchPoolPage(poolUrl(pool), { fresh }), error: null };
+    return { pool, page: await fetchSchedulePage(pool, { fresh }), error: null };
   } catch (err) {
     return { pool, page: null, error: err instanceof Error ? err.message : String(err) };
   }
@@ -74,7 +77,13 @@ function toPoolStatus(
   week: TodayInfo[],
   llmNews: NewsReadings | undefined
 ): PoolStatus {
-  const base = { slug: pool.slug, name: pool.name, url: poolUrl(pool), env: pool.env };
+  const base = {
+    slug: pool.slug,
+    name: pool.name,
+    commune: pool.commune,
+    url: poolUrl(pool),
+    env: pool.env,
+  };
   if (!page) return { ...base, ok: false, error, week: null, raw: null, phone: null };
   const days = week.map((d) => analyzeDay(page, d, pool, llmNews));
   // Les corps de texte bruts (section.body) ne servent qu'à l'analyse
@@ -335,7 +344,12 @@ export async function getStatusReport(): Promise<StatusReport> {
       const maxAgeMs = cronActive(toulouseHour())
         ? CACHE_STALE_DAYTIME_MS
         : CACHE_ABANDONED_NIGHT_MS;
-      if (Date.now() - lastGood.fetchedAt < maxAgeMs) return lastGood.report;
+      // Un rapport d'avant un ajout/retrait de piscine est encore servable,
+      // mais il lui manque des piscines : rescan en tâche de fond sans
+      // attendre qu'il soit périmé (sinon jusqu'à 15 min à 12 piscines après
+      // un déploiement qui en déclare 20).
+      const complete = lastGood.report.pools.length === POOLS.length;
+      if (Date.now() - lastGood.fetchedAt < maxAgeMs && complete) return lastGood.report;
 
       // Périmé (cron en retard) : rescan de secours en tâche de fond, verrouillé
       // pour qu'un seul visiteur le déclenche. On sert le dernier bon rapport.

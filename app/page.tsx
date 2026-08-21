@@ -1,5 +1,6 @@
 import { getStatusReport } from "@/lib/status";
-import { readFilterPreset } from "@/lib/filters";
+import { cookies } from "next/headers";
+import { FILTER_COOKIE, parseFilterCookie, readFilterPreset } from "@/lib/filters";
 import { PoolsView } from "@/components/pools-view";
 import { StaleBanner } from "@/components/stale-banner";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -18,8 +19,14 @@ export default async function Home({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const [report, params] = await Promise.all([getStatusReport(), searchParams]);
-  const preset = readFilterPreset(params);
+  const [report, params, jar] = await Promise.all([getStatusReport(), searchParams, cookies()]);
+  // Les paramètres d'URL (raccourcis du lanceur Android) priment sur les
+  // filtres mémorisés : le raccourci « 50 m » doit montrer les 50 m même si la
+  // dernière visite s'était terminée sur « 25 m ».
+  const preset = readFilterPreset({
+    ...parseFilterCookie(jar.get(FILTER_COOKIE)?.value),
+    ...params,
+  });
 
   const updated = new Intl.DateTimeFormat("fr-FR", {
     timeZone: "Europe/Paris",

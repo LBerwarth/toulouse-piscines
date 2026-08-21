@@ -78,6 +78,27 @@ describe("parseDays", () => {
     expect([...parseDays("De 7h à 20h en semaine")!]).toEqual([0, 1, 2, 3, 4]);
     expect([...parseDays("De 10h à 20h le week-end")!].sort()).toEqual([5, 6]);
   });
+
+  it("ignore les jours portés par des dates (« du mardi 26 mai au vendredi 31 août »)", () => {
+    // Bornes de période, pas jours d'ouverture : la ligne vaut tous les jours.
+    expect(parseDays("Du mardi 26 mai au vendredi 31 août : 13h à 19h")).toBeNull();
+    // L'intervalle de jours sans dates reste lu tel quel
+    expect([...parseDays("Du mardi au vendredi de 13h à 19h")!]).toEqual([1, 2, 3, 4]);
+    // Un jour daté isolé garde son jour (il coïncide avec la date)
+    expect([...parseDays("Le samedi 20 juin de 10h à 18h")!]).toEqual([5]);
+  });
+
+  it("exclut les jours cités après « sauf »", () => {
+    expect([...parseDays("Tous les jours, sauf le mardi, de 13h à 19h")!].sort()).toEqual([
+      0, 2, 3, 4, 5, 6,
+    ]);
+    // Sans jours avant « sauf », l'exclusion vaut sur toute la semaine
+    expect([...parseDays("Ouvert de 13h à 19h sauf le lundi")!].sort()).toEqual([
+      1, 2, 3, 4, 5, 6,
+    ]);
+    // « sauf » sans jour cité : aucun jour nommé, la ligne vaut tous les jours
+    expect(parseDays("De 10h à 20h sauf jours fériés")).toBeNull();
+  });
 });
 
 describe("parseDateRange", () => {

@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import { fetchHtml } from "./sources/http";
 
 export interface SectionLine {
   /** "heading" = sous-titre (h3-h6, ex. « Du 5 juin au 5 juillet »), "text" = contenu */
@@ -36,8 +37,6 @@ export interface PageSections {
   phone: string | null;
 }
 
-const REVALIDATE_SECONDS = 1800;
-
 function clean(text: string): string {
   return text.replace(/ /g, " ").replace(/\s+/g, " ").trim();
 }
@@ -53,31 +52,11 @@ function firstPhone(text: string): string | null {
 }
 
 /**
- * Récupère et analyse une page piscine.
- * @param opts.fresh force une requête réseau (sans le Data Cache de Next) —
- *   utilisé quand on rafraîchit volontairement le cache applicatif (cf. status.ts).
+ * Récupère et analyse une page piscine du site de la mairie de Toulouse.
+ * @param opts.fresh force une requête réseau (cf. fetchHtml).
  */
 export async function fetchPoolPage(url: string, opts?: { fresh?: boolean }): Promise<PageSections> {
-  const res = await fetch(url, {
-    // On ne peut pas combiner `cache` et `next.revalidate` : soit on force le
-    // réseau, soit on s'appuie sur le Data Cache (30 min).
-    ...(opts?.fresh ? { cache: "no-store" as const } : { next: { revalidate: REVALIDATE_SECONDS } }),
-    // En-têtes proches d'un navigateur : depuis les IP datacenter de Vercel, la
-    // source (Varnish + protection en façade) renvoyait sinon une page vide en
-    // HTTP 200 à notre ancien User-Agent « bot », d'où des rescans à zéro
-    // horaire pris à tort pour une maintenance. Accès légitime à des données
-    // publiques pour une appli gratuite et non commerciale.
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Accept-Language": "fr-FR,fr;q=0.9",
-    },
-  });
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status} en récupérant ${url}`);
-  }
-  const page = parsePoolPage(await res.text());
+  const page = parsePoolPage(await fetchHtml(url, opts));
   // La mairie sert sa page de maintenance avec un HTTP 200 (« Site en
   // maintenance », sans aucune grille). Une refonte qui casserait le parseur
   // produirait le même vide. Dans les deux cas la page n'a rien d'exploitable :
