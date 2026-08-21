@@ -18,28 +18,72 @@ self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) =>
   event.waitUntil(
     (async () => {
-      // Purge des caches d'une version antérieure.
       const keys = await caches.keys();
-      await Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)));
+      const oldKeys = keys.filter((k) => k !== CACHE);
+      // Reprendre les PAGES de l'ancien cache avant de le purger : le nouveau
+      // SW prend le controle immediatement (skipWaiting) et la page se recharge
+      // dans la foulee — sans cette reprise, le repli du delai reseau n'existe
+      // plus juste apres un deploiement, precisement quand on recharge. Les
+      // ressources hachees (/_next/static/) de l'ancien build, elles, ne
+      // reserviront jamais : on les laisse mourir avec l'ancien cache.
+      const target = await caches.open(CACHE);
+      for (const key of oldKeys) {
+        const source = await caches.open(key);
+        for (const req of await source.keys()) {
+          const path = new URL(req.url).pathname;
+          if (path.startsWith("/_next/") || path.startsWith("/icon-")) continue;
+          if (!(await target.match(req))) {
+            const res = await source.match(req);
+            if (res) await target.put(req, res);
+          }
+        }
+      }
+      await Promise.all(oldKeys.map((k) => caches.delete(k)));
       await self.clients.claim();
     })()
   )
 );
 
-// Réseau d'abord ; en cas d'échec, dernière réponse en cache (ou repli minimal).
-async function networkFirst(request) {
+// Sur mobile, un fetch peut pendre de longues secondes SANS echouer (reseau
+// faible, serveur froid) : la TWA resterait figee sur son ecran de demarrage
+// alors qu'une page en cache existe. Passe ce delai, on sert le cache et le
+// reseau continue en arriere-plan pour rafraichir la prochaine ouverture.
+const NAV_TIMEOUT_MS = 3500;
+
+function offlineResponse() {
+  return new Response(OFFLINE_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+// Reseau d'abord, mais borne des qu'un repli en cache existe.
+async function networkFirst(request, event) {
   const cache = await caches.open(CACHE);
-  try {
-    const res = await fetch(request);
+  const network = fetch(request).then((res) => {
     if (res && res.ok) cache.put(request, res.clone());
     return res;
-  } catch {
-    const cached = await cache.match(request, { ignoreSearch: true });
-    return (
-      cached ||
-      new Response(OFFLINE_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } })
-    );
+  });
+
+  // Repli du delai : la MEME URL uniquement — les filtres vivent dans la query
+  // (raccourcis du lanceur), servir la page d'un autre filtre tromperait.
+  const cached = await cache.match(request);
+  if (!cached) {
+    try {
+      return await network;
+    } catch {
+      // Hors ligne : n'importe quelle variante vaut mieux que rien.
+      const any = await cache.match(request, { ignoreSearch: true });
+      return any || offlineResponse();
+    }
   }
+
+  const winner = await Promise.race([
+    network.catch(() => null),
+    new Promise((resolve) => setTimeout(() => resolve(null), NAV_TIMEOUT_MS)),
+  ]);
+  // Reponse reseau saine dans les temps : elle prime. Erreur HTTP (5xx de
+  // maintenance...) ou delai depasse : la derniere bonne page fait mieux.
+  if (winner && winner.ok) return winner;
+  event.waitUntil(network.catch(() => {}));
+  return cached;
 }
 
 // Cache d'abord (ressources versionnées, au nom haché : sûres à figer).
@@ -61,7 +105,7 @@ self.addEventListener("fetch", (event) => {
 
   // La page elle-même : réseau d'abord, repli sur la dernière page en cache.
   if (request.mode === "navigate") {
-    event.respondWith(networkFirst(request));
+    event.respondWith(networkFirst(request, event));
     return;
   }
 
