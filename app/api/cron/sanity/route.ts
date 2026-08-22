@@ -1,7 +1,11 @@
 import { readCachedReport, usablePoolCount } from "@/lib/status";
+import { tarifVerifications } from "@/lib/tarifs";
+import { fetchHtml } from "@/lib/sources/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Le 1er du mois, le contrôle des tarifs ajoute jusqu'à 7 fetchs de 15 s max.
+export const maxDuration = 150;
 
 /**
  * Contrôle quotidien de santé des données, appelé par un workflow GitHub
@@ -80,9 +84,36 @@ export async function GET(req: Request) {
     problems.push(`cache illisible : ${err instanceof Error ? err.message : String(err)}`);
   }
 
+  // Tarifs relevés (lib/tarifs.ts) : une fois par mois, vérifier que les
+  // montants figurent toujours sur leur page source — les mairies révisent
+  // leurs prix une fois l'an, inutile (et impoli) de les interroger chaque
+  // jour. Une divergence alerte, elle ne met jamais à jour en silence.
+  if (toulouseDayOfMonth() === 1) {
+    for (const { source, expect } of tarifVerifications()) {
+      try {
+        const html = await fetchHtml(source, { fresh: true });
+        const missing = expect.filter((needle) => !html.includes(needle));
+        if (missing.length > 0) {
+          problems.push(`tarifs à revérifier sur ${source} : « ${missing.join(" », « ")} » introuvable(s)`);
+        }
+      } catch (err) {
+        problems.push(
+          `tarifs invérifiables (${source}) : ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    }
+  }
+
   if (problems.length > 0) {
     console.error("[sanity]", problems.join(" | "));
     return Response.json({ ok: false, problems }, { status: 500 });
   }
   return Response.json({ ok: true, checkedAt: new Date().toISOString() });
+}
+
+/** Jour du mois à Toulouse (le serveur peut tourner en UTC). */
+function toulouseDayOfMonth(): number {
+  return Number(
+    new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", day: "numeric" }).format(new Date())
+  );
 }

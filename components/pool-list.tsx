@@ -5,6 +5,7 @@ import type { PoolStatus } from "@/lib/status";
 import type { SectionLine } from "@/lib/scrape";
 import { liveState, type LiveState } from "@/lib/live-state";
 import { formatPhone, phoneHref, poolDirectionsUrl } from "@/lib/pools";
+import { poolTarifs } from "@/lib/tarifs";
 
 /** Ligne d'horaires : « Lundi : … », « Du lundi au jeudi : … », « Samedi et dimanche … » */
 const DAY_LINE_RE = /^(?:du|le)?\s*(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b/i;
@@ -342,6 +343,25 @@ function PoolCard({
           Information incertaine — vérifiez la page officielle.
         </p>
       )}
+
+      {(() => {
+        const tarifs = poolTarifs(pool.slug);
+        if (!tarifs) return null;
+        return (
+          <p
+            className="mt-2 text-xs text-slate-500 dark:text-slate-400"
+            title={`${tarifs.note ?? ""} Relevé le ${tarifs.releve} sur la page officielle.`.trim()}
+          >
+            <span className="font-medium text-slate-600 dark:text-slate-300">Tarifs :</span>{" "}
+            {tarifs.entries.map((e, i) => (
+              <span key={e.label} className="whitespace-nowrap">
+                {i > 0 && " · "}
+                {e.prix} <span className="text-slate-400 dark:text-slate-500">({e.label})</span>
+              </span>
+            ))}
+          </p>
+        );
+      })()}
 
       {pool.raw && (
         <details className="mt-2">
