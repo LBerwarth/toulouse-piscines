@@ -10,9 +10,14 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
+  // Domaine canonique : le même site est aussi servi sur
+  // toulouse-piscines.vercel.app (domaine auquel l'app Android reste liée) —
+  // sans canonique, Google choisirait lui-même lequel indexer.
+  metadataBase: new URL("https://piscines-toulouse.fr"),
+  alternates: { canonical: "/" },
   title: "Piscines de Toulouse — ouvertes aujourd'hui ?",
   description:
-    "Statut du jour des 12 piscines municipales de Toulouse : horaires, fermetures exceptionnelles et travaux, mis à jour automatiquement depuis le site de la métropole.",
+    "Horaires du jour des piscines de Toulouse et de son agglomération (Blagnac, Colomiers, Balma…) : ouvertures, fermetures exceptionnelles et travaux, mis à jour automatiquement depuis les pages officielles.",
   applicationName: "Piscines Toulouse",
   appleWebApp: {
     capable: true,
