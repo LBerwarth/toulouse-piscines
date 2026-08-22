@@ -241,7 +241,13 @@ export function TimelineChart({
           return (
             <p key={row.key} className="pt-1 text-xs font-semibold text-slate-800 dark:text-slate-100">
               {isFavorite?.(row.slug) && <FavStar />}
-              {row.label}
+              <a
+                href={`#carte-${row.slug}`}
+                title={`Aller à la fiche ${row.label}`}
+                className="underline-offset-2 hover:text-fuchsia-700 hover:underline dark:hover:text-fuchsia-300"
+              >
+                {row.label}
+              </a>
             </p>
           );
         }
@@ -252,6 +258,8 @@ export function TimelineChart({
 
         // L'indentation des bassins (pl-3) s'applique au nom seul, pas à la
         // ligne entière : toutes les barres démarrent ainsi au même endroit.
+        // Le nom de la piscine mène à sa fiche plus bas dans la page (le bloc
+        // replié se rouvre sur le hash) ; les lignes de bassin restent du texte.
         const nameEl = (
           <p
             className={
@@ -261,7 +269,17 @@ export function TimelineChart({
             }
           >
             {showStar && <FavStar />}
-            {row.label}
+            {row.sub ? (
+              row.label
+            ) : (
+              <a
+                href={`#carte-${row.slug}`}
+                title={`Aller à la fiche ${row.label}`}
+                className="underline-offset-2 hover:text-fuchsia-700 hover:underline dark:hover:text-fuchsia-300"
+              >
+                {row.label}
+              </a>
+            )}
           </p>
         );
 
