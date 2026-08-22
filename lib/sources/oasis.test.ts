@@ -73,4 +73,8 @@ describe("parseOasisPage", () => {
     expect(page.intro).toBe("");
     expect(page.sections.length).toBeGreaterThan(0);
   });
+
+  it("porte le numéro de l'accueil, que le site ne publie que par script", () => {
+    expect(parseOasisPage(schedule, null).phone).toBe("0561062350");
+  });
 });

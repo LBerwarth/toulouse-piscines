@@ -107,7 +107,9 @@ export function parseOasisPage(scheduleHtml: string, homeHtml: string | null): P
     sections,
     notices: [],
     shorts: [],
-    phone: null,
+    // Le site publie le numéro via un script (span rempli côté client),
+    // illisible au scrape : numéro de l'accueil relevé sur place et figé.
+    phone: "0561062350",
   };
 }
 
