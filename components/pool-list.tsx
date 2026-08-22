@@ -347,19 +347,30 @@ function PoolCard({
       {(() => {
         const tarifs = poolTarifs(pool.slug);
         if (!tarifs) return null;
+        // Replié par défaut : information utile mais secondaire, elle ne doit
+        // pas allonger chaque fiche de la liste.
         return (
-          <p
-            className="mt-2 text-xs text-slate-500 dark:text-slate-400"
-            title={`${tarifs.note ?? ""} Relevé le ${tarifs.releve} sur la page officielle.`.trim()}
-          >
-            <span className="font-medium text-slate-600 dark:text-slate-300">Tarifs :</span>{" "}
-            {tarifs.entries.map((e, i) => (
-              <span key={e.label} className="whitespace-nowrap">
-                {i > 0 && " · "}
-                {e.prix} <span className="text-slate-400 dark:text-slate-500">({e.label})</span>
-              </span>
-            ))}
-          </p>
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs text-slate-500 dark:text-slate-400">
+              Tarifs
+            </summary>
+            <ul className="mt-1.5 space-y-0.5 text-xs text-slate-600 dark:text-slate-300">
+              {tarifs.entries.map((e) => (
+                <li key={e.label}>
+                  {e.label} :{" "}
+                  <span className="font-medium tabular-nums text-slate-700 dark:text-slate-200">
+                    {e.prix}
+                  </span>
+                </li>
+              ))}
+              {tarifs.note && (
+                <li className="pt-0.5 text-slate-400 dark:text-slate-500">{tarifs.note}</li>
+              )}
+              <li className="text-slate-400 dark:text-slate-500">
+                Relevés le {tarifs.releve.split("-").reverse().join("/")} sur la page officielle.
+              </li>
+            </ul>
+          </details>
         );
       })()}
 
