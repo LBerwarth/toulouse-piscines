@@ -59,6 +59,19 @@ export function parseBalmaPage(html: string): PageSections {
     }
   }
 
+  // Grille de rentrée : la mairie ne la publie qu'en IMAGE
+  // (HorairesPISCINE_sept2026_bis.jpg), illisible au scrape — relevée à la
+  // main sur l'affiche le 22/08/2026. Les grilles d'été de la page (datées,
+  // bornées) gardent la priorité tant qu'elles couvrent le jour ; ces deux
+  // blocs ouverts se départagent ensuite par le calendrier scolaire.
+  for (const grid of SEPTEMBER_GRIDS) {
+    sections.push({
+      title: grid.title,
+      body: grid.rules.join("\n"),
+      lines: grid.rules.map((text) => ({ kind: "text" as const, text })),
+    });
+  }
+
   // Seuls les paragraphes parlant de fermeture : les autres racontent les
   // travaux de rénovation de 2022 et n'ont rien à dire sur aujourd'hui.
   const notices = $(".bloc-content--paragraph p")
@@ -97,3 +110,31 @@ function firstPhone(href: string): string | null {
   const digits = href.replace(/\D/g, "").replace(/^33/, "0");
   return /^0[1-9]\d{8}$/.test(digits) ? digits : null;
 }
+
+/** Grille annuelle relevée sur l'affiche de la mairie (voir parseBalmaPage). */
+const SEPTEMBER_GRIDS: { title: string; rules: string[] }[] = [
+  {
+    title: "Horaires en période scolaire (à partir du 30 août 2026)",
+    rules: [
+      "Lundi : 12h00 - 13h30 et 17h00 - 19h30",
+      "Mardi : 17h00 - 19h30",
+      "Mercredi : 12h00 - 13h30",
+      "Jeudi : 17h00 - 19h30",
+      "Vendredi : 12h00 - 13h30",
+      "Samedi : 9h00 - 12h00 et 13h30 - 18h00",
+      "Dimanche : fermé",
+    ],
+  },
+  {
+    title: "Horaires vacances scolaires (à partir du 30 août 2026)",
+    rules: [
+      "Lundi : fermé",
+      "Mardi : 12h00 - 19h00",
+      "Mercredi : 12h00 - 19h00",
+      "Jeudi : 12h00 - 19h00",
+      "Vendredi : 12h00 - 19h00",
+      "Samedi : 10h00 - 18h00",
+      "Dimanche : fermé",
+    ],
+  },
+];
