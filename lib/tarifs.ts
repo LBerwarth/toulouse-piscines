@@ -33,16 +33,19 @@ export interface PoolTarifs {
 
 /** Tarif unique des 12 piscines municipales de Toulouse (page « Billetterie »). */
 const TOULOUSE: PoolTarifs = {
+  // Deux montants séparés d'une barre = Toulousains / non-Toulousains.
   entries: [
     { label: "Toulousains", prix: "3,40 €" },
     { label: "non-Toulousains", prix: "4,40 €" },
     { label: "moins de 25 ans", prix: "1,50 €" },
+    { label: "carnet 10 entrées", prix: "25,50 / 33 €" },
+    { label: "abonnement annuel", prix: "129 / 167,50 €" },
   ],
-  note: "Gratuit pour les moins de 10 ans, les seniors retraités toulousains (carte) et les Toulousains en situation de handicap.",
+  note: "Abonnement annuel moins de 25 ans : 25 €. Gratuit pour les moins de 10 ans, les seniors retraités toulousains (carte) et les Toulousains en situation de handicap.",
   source: "https://metropole.toulouse.fr/annuaire/piscine-alban-minville",
   releve: "2026-08-22",
   // La page écrit les montants avec un point (« 3.40 € »).
-  verify: ["3.40", "4.40", "1.50"],
+  verify: ["3.40", "4.40", "1.50", "25.50", "167.50"],
 };
 
 const PAR_PISCINE: Record<string, PoolTarifs> = {
