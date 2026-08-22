@@ -2,6 +2,7 @@ import { getStatusReport } from "@/lib/status";
 import { cookies } from "next/headers";
 import { FILTER_COOKIE, parseFilterCookie, readFilterPreset } from "@/lib/filters";
 import { PoolsView } from "@/components/pools-view";
+import { PlayBanner } from "@/components/play-banner";
 import { StaleBanner } from "@/components/stale-banner";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { FeedbackForm } from "@/components/feedback-form";
@@ -75,6 +76,8 @@ export default async function Home({
         </svg>
         <ThemeToggle />
       </header>
+
+      <PlayBanner />
 
       <StaleBanner updatedAt={report.updatedAt} updatedLabel={updated} />
 

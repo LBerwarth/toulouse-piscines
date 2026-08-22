@@ -16,6 +16,17 @@ export default function manifest(): MetadataRoute.Manifest {
     lang: "fr",
     dir: "ltr",
     categories: ["sports", "health", "lifestyle"],
+    // Sur Android, Chrome propose l'application Play plutôt que l'installation
+    // de la PWA : c'est là que vivent les mises à jour, les raccourcis du
+    // lanceur et les avis.
+    related_applications: [
+      {
+        platform: "play",
+        url: "https://play.google.com/store/apps/details?id=io.github.lberwarth.toulousepiscines",
+        id: "io.github.lberwarth.toulousepiscines",
+      },
+    ],
+    prefer_related_applications: true,
     icons: [
       { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
       { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
