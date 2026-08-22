@@ -45,7 +45,7 @@ export function parseLeguevinPage(html: string): PageSections {
     });
   }
 
-  // Le seul numéro publié est le standard de la mairie — pas celui de la
-  // piscine : on n'affiche pas de bouton d'appel.
-  return { intro: "", sections, notices: [], shorts: [], phone: null };
+  // La page ne publie que le standard de la mairie : numéro de la piscine
+  // relevé sur place et figé.
+  return { intro: "", sections, notices: [], shorts: [], phone: "0561866212" };
 }

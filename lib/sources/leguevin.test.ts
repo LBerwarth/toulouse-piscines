@@ -21,6 +21,10 @@ describe("parseLeguevinPage", () => {
     expect(rule).toMatch(/tous les jours/);
   });
 
+  it("porte le numéro de la piscine, que la page ne publie pas", () => {
+    expect(parseLeguevinPage(html).phone).toBe("0561866212");
+  });
+
   it("ne rend rien sans la phrase d'ouverture", () => {
     expect(parseLeguevinPage("<p>Tarifs 2026</p>").sections).toHaveLength(0);
   });
