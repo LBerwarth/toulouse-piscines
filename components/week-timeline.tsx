@@ -51,15 +51,19 @@ export function WeekTimeline({
   return (
     <div>
       {/* 7 colonnes égales : tient toujours dans la largeur de l'écran,
-          sans conteneur défilant (pas de barre de scroll parasite) */}
+          sans conteneur défilant (pas de barre de scroll parasite).
+          L'ordre suit `days` — aujourd'hui d'abord, puis les jours suivants :
+          on lit ainsi « lundi » comme LE PROCHAIN lundi, pas comme un début
+          de semaine calendaire. */}
       <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
-        {DAY_LABELS.map((label, wd) => {
-          const isSel = selected === wd;
+        {days.map((d) => {
+          const label = DAY_LABELS[d.weekday];
+          const isSel = selected === d.weekday;
           return (
             <button
-              key={label}
+              key={d.dateKey}
               type="button"
-              onClick={() => setSelected(wd)}
+              onClick={() => setSelected(d.weekday)}
               aria-pressed={isSel}
               className={`rounded-full px-0 py-1 text-center text-xs transition-colors ${
                 isSel
