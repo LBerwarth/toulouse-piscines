@@ -31,6 +31,7 @@ TROUVER SA PISCINE, ET Y ALLER
 • Touchez un nom sur le plan pour ouvrir sa fiche.
 • L'itinéraire s'ouvre en un geste dans votre application de cartes.
 • Le numéro de l'accueil est accessible directement depuis la fiche de chaque piscine.
+• Les tarifs d'entrée, carnets et abonnements de chaque piscine, relevés des pages officielles.
 • « En bref » : les annonces publiées sur la page officielle de chaque piscine, résumées sur sa fiche.
 
 DES ALERTES UTILES (FACULTATIVES)

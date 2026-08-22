@@ -1,4 +1,5 @@
 • L'application couvre désormais l'agglomération : Blagnac, Colomiers, Balma, Launaguet, Saint-Alban, Tournefeuille, Plaisance-du-Touch et Léguevin rejoignent les 12 piscines de Toulouse.
 • Nouveau filtre « Secteur » (Toulouse / Métropole / + alentours) — tous vos filtres sont maintenant mémorisés d'une ouverture à l'autre.
 • Le plan s'adapte au secteur choisi.
+• Les tarifs d'entrée de chaque piscine, dans un bloc dépliable de sa fiche.
 • Corrigé : l'application ne reste plus bloquée sur l'écran de démarrage en cas de réseau lent.
