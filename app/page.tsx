@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { FILTER_COOKIE, parseFilterCookie, readFilterPreset } from "@/lib/filters";
 import { PoolsView } from "@/components/pools-view";
 import { PlayBanner } from "@/components/play-banner";
+import { IosBanner } from "@/components/ios-banner";
 import { StaleBanner } from "@/components/stale-banner";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { FeedbackForm } from "@/components/feedback-form";
@@ -78,6 +79,7 @@ export default async function Home({
       </header>
 
       <PlayBanner />
+      <IosBanner />
 
       <StaleBanner updatedAt={report.updatedAt} updatedLabel={updated} />
 
