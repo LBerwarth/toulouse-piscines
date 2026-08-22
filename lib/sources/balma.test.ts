@@ -28,9 +28,22 @@ describe("parseBalmaPage", () => {
   it("fait une section par plage, quand une grille en couvre deux", () => {
     // parseDateRange n'en lit qu'une : sans dédoublement, la seconde période
     // paraîtrait fermée faute de bloc la couvrant.
+    // Les deux grilles figées de la rentrée (relevées de l'affiche) suivent.
     expect(parseBalmaPage(html).sections.map((s) => s.title)).toEqual([
       "Horaires du mardi 30 juin au samedi 1er août 2026",
       "Horaires du mardi 25 août au samedi 29 août 2026",
+      "Horaires en période scolaire (à partir du 30 août 2026)",
+      "Horaires vacances scolaires (à partir du 30 août 2026)",
+    ]);
+  });
+
+  it("porte la grille de rentrée même si la page ne publie que l'été", () => {
+    // Sans grille dans la page, les blocs relevés de l'affiche restent : la
+    // piscine ne redevient pas « sans horaires » à la fin de l'été.
+    const bare = parseBalmaPage("<div></div>");
+    expect(bare.sections.map((s) => s.title)).toEqual([
+      "Horaires en période scolaire (à partir du 30 août 2026)",
+      "Horaires vacances scolaires (à partir du 30 août 2026)",
     ]);
   });
 
