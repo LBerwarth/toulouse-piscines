@@ -15,5 +15,6 @@ export async function fetchHersainPage(
   if (page.sections.length === 0) {
     throw new Error(`Aucune grille d'horaires sur ${url}`);
   }
-  return page;
+  // La page écrit le numéro en clair (« 05.61.70.53.41 »), sans lien « tel: » : numéro de l'accueil relevé et figé.
+  return { ...page, phone: page.phone ?? "0561705341" };
 }

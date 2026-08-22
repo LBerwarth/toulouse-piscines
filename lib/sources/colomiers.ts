@@ -14,5 +14,6 @@ export async function fetchColomiersPage(
   if (page.sections.length === 0) {
     throw new Error(`Aucune grille d'horaires sur ${url}`);
   }
-  return page;
+  // Le site n'expose pas de lien « tel: » : numéro de l'accueil relevé et figé.
+  return { ...page, phone: page.phone ?? "0561153150" };
 }
