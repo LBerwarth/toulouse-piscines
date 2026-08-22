@@ -45,6 +45,7 @@ next-env.d.ts
 # brouillons de communication et notes locales — jamais dans le dépôt public
 mail-*.txt
 poster-*.html
+poster-*.png
 ig-story.*
 /memory/
 courrier-*.md
